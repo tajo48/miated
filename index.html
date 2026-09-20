@@ -229,7 +229,11 @@
      height only, so any resolution from 480p to 1080p gets the same flow. */
   @media (orientation: landscape) and (max-height: 520px) {
     body {
-      padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+      padding:
+        calc(10px + env(safe-area-inset-top, 0px))
+        calc(16px + env(safe-area-inset-right, 0px))
+        calc(10px + env(safe-area-inset-bottom, 0px))
+        calc(16px + env(safe-area-inset-left, 0px));
       gap: 10px;
     }
     .wrap {
@@ -250,6 +254,13 @@
     .stats { grid-area: stats; align-self: center; }
     .stat { padding: 14px 16px 12px; gap: 2px; }
     .stat .value { font-size: clamp(40px, 16vh, 84px); min-height: 1em; }
+    #viz {
+      /* stretch under the camera/gesture bars instead of stopping at them */
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
     #routeCard {
       grid-area: route;
       align-self: center;
