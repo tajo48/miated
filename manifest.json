@@ -1,7 +1,7 @@
 {
   "name": "Miated",
   "short_name": "Miated",
-  "description": "Music player controls, a two-dot animation that dances to volume and speed, and live GPS speed & acceleration.",
+  "description": "An audio-reactive visualizer that listens to whatever is playing on your device, plus live GPS speed & acceleration.",
   "id": "./",
   "start_url": "./",
   "scope": "./",

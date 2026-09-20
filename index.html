@@ -45,7 +45,20 @@
   }
   body::-webkit-scrollbar { display: none; }
 
+  /* The dot field is the site background: fixed, full-viewport, behind the
+     UI, never catching pointers. */
+  #viz {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+
   .wrap {
+    position: relative;
+    z-index: 1;
     width: min(92vw, 480px);
     display: flex;
     flex-direction: column;
@@ -66,20 +79,11 @@
     font-weight: normal;
   }
 
-  /* ---------- stage ---------- */
-  .stage {
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    background: #303446;
-    border: 2px solid #51576d;
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  #viz { width: 100%; height: 100%; display: block; }
-
-  /* ---------- cards & controls ---------- */
+  /* ---------- cards ---------- */
   .card {
-    background: #303446;
+    background: rgba(48, 52, 70, 0.82); /* surface, slightly clear so the dots peek through */
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
     border: 2px solid #51576d;
     border-radius: 6px;
     padding: 12px 14px;
@@ -111,9 +115,6 @@
   button:focus-visible { outline: 2px solid #8caaee; outline-offset: 2px; }
   button:active:not(:disabled) { transform: scale(0.96); }
 
-  input[type="range"] { accent-color: #8caaee; touch-action: manipulation; }
-  input[type="range"]:disabled { opacity: 0.35; }
-
   .track {
     flex: 1 1 120px;
     min-width: 0;
@@ -125,41 +126,6 @@
     user-select: none;
   }
 
-  .seekRow { gap: 8px; }
-  .seekRow input { flex: 1; min-width: 0; }
-  .time {
-    font-family: var(--bebas);
-    font-size: 15px;
-    letter-spacing: 1px;
-    color: #a5adce;
-    font-variant-numeric: tabular-nums;
-    min-width: 34px;
-    text-align: center;
-  }
-
-  .sl {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1 1 150px;
-    min-width: 0;
-    font-size: 11px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: #a5adce;
-    user-select: none;
-  }
-  .sl input { flex: 1; min-width: 0; }
-  #rateVal {
-    font-family: var(--bebas);
-    font-size: 15px;
-    letter-spacing: 1px;
-    color: #8caaee;
-    min-width: 44px;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-
   .stats { align-items: stretch; }
   .stat {
     flex: 1 1 120px;
@@ -168,7 +134,7 @@
     flex-direction: column;
     align-items: center;
     gap: 1px;
-    background: #414559;
+    background: rgba(65, 69, 89, 0.9);
     border: 2px solid #51576d;
     border-radius: 6px;
     padding: 9px 12px 7px;
@@ -230,39 +196,21 @@
     white-space: nowrap;
   }
   .install-pill button:hover:not(:disabled) { background: transparent; color: #c6d0f5; }
-
-  /* Short landscape screens (phones): shrink the stage so the controls fit
-     without much scrolling. */
-  @media (max-height: 480px) {
-    .stage { width: min(60vw, 300px); }
-    .stat .value { font-size: 28px; min-height: 30px; }
-  }
 </style>
 </head>
 <body>
+
+<canvas id="viz"></canvas>
 
 <div class="wrap">
   <div class="topbar">
     <div class="brandRow"><img src="favicon.svg" alt=""><h1>Miated</h1></div>
   </div>
 
-  <div class="stage"><canvas id="viz"></canvas></div>
-
   <div class="card">
     <div class="row">
-      <button id="loadBtn">Load audio</button>
-      <span id="track" class="track">No track loaded</span>
-      <input type="file" id="file" accept="audio/*" hidden>
-    </div>
-    <div class="row seekRow">
-      <span class="time" id="tCur">0:00</span>
-      <input type="range" id="seek" min="0" max="1000" value="0" disabled aria-label="Seek">
-      <span class="time" id="tDur">0:00</span>
-    </div>
-    <div class="row">
-      <button id="play" disabled>Play</button>
-      <label class="sl">Vol <input type="range" id="vol" min="0" max="1" step="0.01" value="0.9" aria-label="Volume"></label>
-      <label class="sl">Speed <input type="range" id="rate" min="0.5" max="2" step="0.05" value="1" aria-label="Playback speed"><span id="rateVal">1.00×</span></label>
+      <button id="listenBtn">Listen</button>
+      <span id="listenStatus" class="track">Not listening — tap Listen and share a tab or screen with audio</span>
     </div>
   </div>
 
@@ -277,14 +225,12 @@
     </div>
   </div>
 
-  <div class="hint">Load a local audio file — the hue dot changes color and the glow dot brightens with the volume, playback speed drives how fast they move. GPS needs https or localhost.</div>
+  <div class="hint">The dot field behind the site dances to any audio playing on this device — tap Listen and share a tab (Spotify, YouTube…) with "share audio". Bass lights the middle rings, highs the outer ones, and every beat sends a wave outward. GPS needs https or localhost.</div>
 </div>
 
 <div class="install-pill" id="installPill" hidden>
   <button class="install-accept" id="installAccept" type="button">Install</button>
 </div>
-
-<audio id="audio"></audio>
 
 <script>
 "use strict";
@@ -293,54 +239,25 @@
 
 const canvas = document.getElementById("viz");
 const ctx = canvas.getContext("2d");
-const audio = document.getElementById("audio");
-const fileInput = document.getElementById("file");
-const loadBtn = document.getElementById("loadBtn");
-const trackEl = document.getElementById("track");
-const playBtn = document.getElementById("play");
-const seek = document.getElementById("seek");
-const tCur = document.getElementById("tCur");
-const tDur = document.getElementById("tDur");
-const vol = document.getElementById("vol");
-const rate = document.getElementById("rate");
-const rateVal = document.getElementById("rateVal");
+const listenBtn = document.getElementById("listenBtn");
+const listenStatus = document.getElementById("listenStatus");
 const speedEl = document.getElementById("speed");
 const accelEl = document.getElementById("accel");
 const gpsBtn = document.getElementById("gpsBtn");
 const gpsStatus = document.getElementById("gpsStatus");
 
-/* ---------- music ---------- */
+/* ---------- audio capture ---------- */
 
-let objectUrl = null;
+/* There is no player here — the app listens to audio played by OTHER apps
+   via getDisplayMedia (share a tab/screen with audio). The captured stream
+   only feeds an analyser; the original audio keeps playing untouched. */
 
-loadBtn.addEventListener("click", () => fileInput.click());
-
-fileInput.addEventListener("change", () => {
-  const f = fileInput.files[0];
-  if (!f) return;
-  if (objectUrl) URL.revokeObjectURL(objectUrl);
-  objectUrl = URL.createObjectURL(f);
-  audio.src = objectUrl;
-  trackEl.textContent = f.name;
-  trackEl.title = f.name;
-  playBtn.disabled = false;
-  seek.disabled = false;
-  audio.play().catch(() => {}); // gesture chain usually allows this; Play button is the fallback
-});
-
-function fmt(t) {
-  if (!isFinite(t) || t < 0) return "0:00";
-  const m = Math.floor(t / 60);
-  const s = Math.floor(t % 60);
-  return m + ":" + String(s).padStart(2, "0");
-}
-
-/* Web Audio: the element feeds an analyser so the animation can read the
-   music's volume. Created lazily on first play (needs a user gesture), and
-   only once — a media element source can never be re-created. */
 let actx = null;
 let analyser = null;
 let freq = null;
+let stream = null;
+let srcNode = null;
+let listening = false;
 
 function ensureGraph() {
   if (actx) {
@@ -348,137 +265,232 @@ function ensureGraph() {
     return;
   }
   const AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) return; // no Web Audio: audio still plays, animation just idles
+  if (!AC) return;
   actx = new AC();
   analyser = actx.createAnalyser();
-  analyser.fftSize = 256;
-  analyser.smoothingTimeConstant = 0.75;
-  actx.createMediaElementSource(audio).connect(analyser);
-  analyser.connect(actx.destination);
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.7;
   freq = new Uint8Array(analyser.frequencyBinCount);
 }
 
-playBtn.addEventListener("click", () => {
-  if (audio.paused) audio.play().catch(() => {});
-  else audio.pause();
-});
-
-audio.addEventListener("play", () => {
-  ensureGraph();
-  playBtn.textContent = "Pause";
-});
-audio.addEventListener("pause", () => {
-  playBtn.textContent = "Play";
-});
-
-audio.addEventListener("loadedmetadata", () => {
-  tDur.textContent = fmt(audio.duration);
-});
-
-let seeking = false;
-seek.addEventListener("input", () => {
-  seeking = true;
-  if (audio.duration) tCur.textContent = fmt(audio.duration * seek.value / 1000);
-});
-seek.addEventListener("change", () => {
-  if (audio.duration) audio.currentTime = audio.duration * seek.value / 1000;
-  seeking = false;
-});
-audio.addEventListener("timeupdate", () => {
-  if (seeking) return;
-  tCur.textContent = fmt(audio.currentTime);
-  if (audio.duration) seek.value = Math.round(audio.currentTime / audio.duration * 1000);
-});
-
-vol.addEventListener("input", () => {
-  audio.volume = Number(vol.value);
-});
-audio.volume = Number(vol.value);
-
-rate.addEventListener("input", () => {
-  audio.playbackRate = Number(rate.value);
-  rateVal.textContent = Number(rate.value).toFixed(2) + "×";
-});
-audio.playbackRate = Number(rate.value);
-
-/* ---------- dot animation ---------- */
-
-/* Two dots orbit the center. The hue dot's color follows the music volume,
-   the glow dot's brightness does, and the playback speed sets how fast they
-   circle — so the animation dances even before a track plays. */
-
-let level = 0;   // smoothed 0..1 music volume
-let phase = 0;   // orbit angle
-let lastTs = 0;
-
-function sampleLevel() {
-  if (!analyser || !freq || audio.paused) return 0;
-  analyser.getByteFrequencyData(freq);
-  let sum = 0;
-  const n = freq.length >> 1; // lower half bins = musical energy
-  for (let i = 0; i < n; i++) sum += freq[i];
-  return Math.min(1, (sum / n / 255) * 1.9);
-}
-
-function draw() {
-  const dpr = window.devicePixelRatio || 1;
-  const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
-  const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width = w;
-    canvas.height = h;
+listenBtn.addEventListener("click", () => {
+  if (listening) {
+    stopListen();
+    return;
   }
-  const cw = canvas.clientWidth;
-  const ch = canvas.clientHeight;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, cw, ch);
+  startListen();
+});
 
-  const cx = cw / 2;
-  const cy = ch / 2;
-  const unit = Math.min(cw, ch);
-  const R = unit * 0.32;
+async function startListen() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    listenStatus.textContent = "Not supported in this browser — try Chrome";
+    return;
+  }
+  try {
+    listenBtn.disabled = true;
+    const media = await navigator.mediaDevices.getDisplayMedia({
+      video: true, // required by Chromium to offer the "share audio" checkbox
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+    });
+    listenBtn.disabled = false;
 
-  // faint orbit guides
-  ctx.lineWidth = Math.max(1.5, unit * 0.008);
-  ctx.strokeStyle = "rgba(197, 208, 245, 0.08)";
-  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath(); ctx.arc(cx, cy, R * 0.62, 0, Math.PI * 2); ctx.stroke();
+    // We only need sound; dropping the video track keeps the picker simple.
+    media.getVideoTracks().forEach((t) => t.stop());
 
-  // hue dot — the color follows the volume
-  const rA = unit * (0.06 + 0.035 * level);
-  const ax = cx + Math.cos(phase) * R;
-  const ay = cy + Math.sin(phase) * R;
-  const hue = (215 + level * 250) % 360;
-  ctx.beginPath();
-  ctx.arc(ax, ay, rA, 0, Math.PI * 2);
-  ctx.fillStyle = `hsl(${hue}, ${55 + level * 25}%, ${46 + level * 14}%)`;
-  ctx.fill();
+    if (!media.getAudioTracks().length) {
+      media.getTracks().forEach((t) => t.stop());
+      listenStatus.textContent = "No audio shared — pick a tab and tick “share audio”";
+      return;
+    }
 
-  // glow dot — brightens up with the volume
-  const rB = unit * (0.05 + 0.02 * level);
-  const bx = cx + Math.cos(-phase * 0.63 + Math.PI / 2) * R * 0.62;
-  const by = cy + Math.sin(-phase * 0.63 + Math.PI / 2) * R * 0.62;
-  const colB = `hsl(220, 65%, ${28 + level * 64}%)`;
-  ctx.save();
-  ctx.shadowColor = colB;
-  ctx.shadowBlur = 6 + 42 * level;
-  ctx.beginPath();
-  ctx.arc(bx, by, rB, 0, Math.PI * 2);
-  ctx.fillStyle = colB;
-  ctx.fill();
-  ctx.restore();
+    stream = media;
+    media.getAudioTracks()[0].addEventListener("ended", stopListen);
+
+    ensureGraph();
+    srcNode = actx.createMediaStreamSource(media);
+    srcNode.connect(analyser); // analyser only — nothing plays twice
+
+    listening = true;
+    listenBtn.textContent = "Stop";
+    listenStatus.textContent = "Listening — play something in the shared tab";
+  } catch (err) {
+    listenBtn.disabled = false;
+    if (err && err.name === "NotAllowedError") {
+      listenStatus.textContent = "Share cancelled";
+    } else {
+      listenStatus.textContent = "Capture failed: " + (err && err.name ? err.name : "unknown");
+    }
+  }
 }
+
+function stopListen() {
+  if (stream) {
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
+  if (srcNode) {
+    try { srcNode.disconnect(); } catch {}
+    srcNode = null;
+  }
+  listening = false;
+  listenBtn.textContent = "Listen";
+  listenStatus.textContent = "Not listening — tap Listen and share a tab or screen with audio";
+}
+
+/* ---------- analysis: level, beats, tempo ---------- */
+
+let level = 0;        // smoothed overall loudness 0..1
+let beatPulse = 0;    // 1 on a detected beat, decays
+let tempo = 1;        // smoothed speed multiplier derived from BPM
+
+const bassHistory = [];
+const beatIntervals = [];
+let lastBeat = 0;
+const waves = []; // { r, e } — light waves expanding through the dot grid
+
+function analyse(ts) {
+  if (!analyser || !listening) return 0;
+  analyser.getByteFrequencyData(freq);
+
+  let sum = 0;
+  const top = Math.min(freq.length, 180);
+  for (let i = 2; i < top; i++) sum += freq[i];
+  const loud = Math.min(1, (sum / (top - 2) / 255) * 1.6);
+
+  let bsum = 0;
+  for (let i = 1; i <= 10; i++) bsum += freq[i];
+  const bassNow = bsum / 10 / 255;
+
+  // beat: bass spike above the recent average, rate-limited
+  bassHistory.push(bassNow);
+  if (bassHistory.length > 45) bassHistory.shift();
+  let hsum = 0;
+  for (const v of bassHistory) hsum += v;
+  const havg = hsum / bassHistory.length;
+  if (bassNow > 0.3 && bassNow > havg * 1.4 && ts - lastBeat > 220) {
+    if (lastBeat) {
+      beatIntervals.push(ts - lastBeat);
+      if (beatIntervals.length > 10) beatIntervals.shift();
+      const sorted = [...beatIntervals].sort((a, b) => a - b);
+      const median = sorted[sorted.length >> 1];
+      const bpm = 60000 / median;
+      tempo += (Math.min(2.2, Math.max(0.4, bpm / 110)) - tempo) * 0.15;
+    }
+    lastBeat = ts;
+    beatPulse = 1;
+    waves.push({ r: 0, e: Math.min(1, bassNow * 1.5) });
+    if (waves.length > 5) waves.shift();
+  }
+
+  return loud;
+}
+
+/* ---------- the dot field ---------- */
+
+/* A full-page grid of dots — the site's background. Each dot sits at some
+   distance from the screen center, and that distance picks its frequency
+   band: bass lights the middle rings, highs the outer ones. Every detected
+   beat sends a wave of light expanding through the grid. With no music the
+   field rests in a faint breathing pattern. */
+
+const dots = []; // { x, y, dist, hue } in CSS px, rebuilt on resize
+let gridSpacing = 0;
+let hueDrift = 0;
+
+function rebuildGrid() {
+  dots.length = 0;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const unit = Math.min(w, h);
+  const spacing = Math.max(26, Math.min(44, unit / 14));
+  gridSpacing = spacing;
+
+  const cx = w / 2;
+  const cy = h / 2;
+  const maxDist = Math.hypot(w, h) / 2;
+
+  for (let y = spacing / 2; y < h; y += spacing) {
+    for (let x = spacing / 2; x < w; x += spacing) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const dist = Math.hypot(dx, dy) / maxDist; // 0 center → 1 corner
+      dots.push({ x, y, dist, hue: (30 + dist * 280) % 360 });
+    }
+  }
+}
+
+function draw(ts, dt) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    rebuildGrid();
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const t = ts / 1000;
+  hueDrift += dt * 4;
+
+  // advance the beat waves
+  const waveSpeed = (0.28 + tempo * 0.22) * dt;
+  for (let i = waves.length - 1; i >= 0; i--) {
+    waves[i].r += waveSpeed;
+    waves[i].e -= dt * 0.9;
+    if (waves[i].e <= 0 || waves[i].r > 1.3) waves.splice(i, 1);
+  }
+
+  const maxR = Math.hypot(w, h) / 2;
+  const baseR = gridSpacing * 0.085;
+
+  for (const d of dots) {
+    // frequency band by distance from center: bass in the middle, highs outside
+    let v = 0;
+    if (analyser && listening) {
+      const bin = 2 + Math.floor(Math.pow(d.dist, 1.35) * 160);
+      v = freq[Math.min(bin, freq.length - 1)] / 255;
+    }
+
+    // beat waves passing through this dot
+    let waveBoost = 0;
+    for (const wave of waves) {
+      const dd = (d.dist - wave.r) * 9;
+      waveBoost += Math.exp(-dd * dd) * wave.e;
+    }
+
+    // idle: faint breathing ripple so the pattern is alive but quiet
+    const idle = 0.05 + 0.035 * Math.sin(t * 0.9 - d.dist * 6);
+
+    const a = Math.min(0.95, idle + v * 0.8 + waveBoost * 0.5);
+    const r = baseR * (1 + v * 1.2 + waveBoost * 0.9);
+    const hue = (d.hue + hueDrift) % 360;
+
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${hue}, ${45 + v * 30}%, ${38 + v * 24 + waveBoost * 12}%, ${a})`;
+    ctx.fill();
+  }
+}
+
+let lastTs = 0;
 
 function frame(ts) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, lastTs ? (ts - lastTs) / 1000 : 0.016);
   lastTs = ts;
-  const target = sampleLevel();
-  // fast attack, slow release: dots kick with the beat, fade out gently
-  level += (target - level) * Math.min(1, dt * (target > level ? 14 : 4.5));
-  const speed = audio.playbackRate || 1;
-  phase += dt * speed * (0.55 + level * 2.4);
-  draw();
+
+  const target = analyse(ts);
+  // fast attack, slow release
+  level += (target - level) * Math.min(1, dt * (target > level ? 16 : 5));
+  beatPulse = Math.max(0, beatPulse - dt * 3);
+
+  draw(ts, dt);
 }
 requestAnimationFrame(frame);
 
