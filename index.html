@@ -608,7 +608,6 @@ let heading = null;       // fused heading, degrees clockwise from TRUE north
 let magHeading = null;    // raw compass heading (magnetic-north referenced)
 let compassOffset = null; // learned magnetic→true offset (declination + mount)
 let lastCourse = null;    // latest GPS course-over-ground (deg)
-let roseHeading = 0;      // displayed rose rotation (eased between 10° slots)
 
 const BEBAS = "'Bebas Neue', Impact, Haettenschweiler, 'Arial Narrow', sans-serif";
 
@@ -750,12 +749,6 @@ function drawRouteBox(dt) {
   viewScale = viewScale === null ? target : viewScale + (target - viewScale) * Math.min(1, dt * 3);
   const s = viewScale;
 
-  // the rose occupies specific 10° slots and eases between them — letters
-  // hold a precise spot instead of wobbling with GPS course noise
-  const slot = Math.round((heading || 0) / 10) * 10;
-  let dh = ((slot - roseHeading + 540) % 360) - 180;
-  roseHeading += dh * Math.min(1, dt * 6);
-
   // the route: dots, older ones fading toward the start
   rctx.save();
   rctx.beginPath();
@@ -783,21 +776,20 @@ function drawRouteBox(dt) {
   rctx.shadowBlur = 0;
   rctx.restore();
 
-  // compass rose: letters ride the rounded-square border at fixed bearings,
-  // so the rose is a pure rotation — your heading sits at the top and the
-  // letters glide around the corners without ever jumping
-  const side = half - rad;
+  // compass rose: each bearing's ray from the center hits the rounded-square
+  // border at exactly one point, so ticks and letters are placed radially at
+  // true bearings — the rose is a pure rotation of the shape: N/E/S/W sit
+  // exactly at 0/90/180/270 and nothing can jump, bunch or fade at corners
+  const hdg = heading || 0;
 
-  // bearing (deg, 0 = up, clockwise) -> the point where the ray from the
-  // center at that angle meets the border, plus its outward normal:
-  // [x, y, normal-x, normal-y], relative to the dial center
+  // bearing -> [x, y, outward-normal-x, outward-normal-y] on the border
   function rosePoint(deg) {
-    const a = ((deg - 90) * Math.PI) / 180;
+    const a = (deg - 90) * (Math.PI / 180); // screen angle: 0° bearing = up
     const ux = Math.cos(a), uy = Math.sin(a);
-    const dist = half / Math.max(Math.abs(ux), Math.abs(uy));
-    let x = dist * ux, y = dist * uy, nx = 0, ny = 0;
+    const t = half / Math.max(Math.abs(ux), Math.abs(uy));
+    let x = t * ux, y = t * uy, nx = 0, ny = 0;
     if (Math.abs(x) > side && Math.abs(y) > side) {
-      // ray exits through a corner: project onto that corner's arc
+      // ray exits through a corner arc: project onto the corner circle
       const qx = Math.sign(x) * side, qy = Math.sign(y) * side;
       const dx = x - qx, dy = y - qy, dl = Math.hypot(dx, dy);
       x = qx + (dx / dl) * rad;
@@ -812,17 +804,37 @@ function drawRouteBox(dt) {
     return [x, y, nx, ny];
   }
 
-  // cardinal letters ride the border just inside the edge — N red, E/S/W muted
-  rctx.textAlign = "center";
-  rctx.textBaseline = "middle";
-  rctx.font = Math.round(size * 0.055) + "px " + BEBAS;
-  const inset = size * 0.12;
-  const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
-  for (const [ch, deg, col] of cardinals) {
-    const [x, y, nx, ny] = rosePoint(deg - roseHeading);
-    rctx.fillStyle = col;
-    rctx.fillText(ch, cx + x - nx * inset, cy + y - ny * inset);
+  // cardinal letters: drawn independently of the ticks — each sits at its
+  // exact bearing, upright, inset along the border normal. No fade: a letter
+  // rounding a corner just follows the arc.
+  function drawCardinals(h) {
+    rctx.textAlign = "center";
+    rctx.textBaseline = "middle";
+    rctx.font = Math.round(size * 0.055) + "px " + BEBAS;
+    const inset = size * 0.12; // clear of the ticks: letters live inside them
+    const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
+    for (const [t, deg, col] of cardinals) {
+      const [x, y, nx, ny] = rosePoint(deg - h);
+      rctx.fillStyle = col;
+      rctx.fillText(t, cx + x - nx * inset, cy + y - ny * inset);
+    }
   }
+
+  // ticks every 10°, majors every 90° — each tick starts AT the border so
+  // the lines touch it
+  for (let i = 0; i < 36; i++) {
+    const [x, y, nx, ny] = rosePoint(i * 10 - hdg);
+    const major = i % 9 === 0;
+    const tickLen = size * (major ? 0.05 : 0.022);
+    rctx.beginPath();
+    rctx.moveTo(cx + x, cy + y);
+    rctx.lineTo(cx + x - nx * tickLen, cy + y - ny * tickLen);
+    rctx.strokeStyle = major ? "#8caaee" : "#626880";
+    rctx.lineWidth = major ? 2 : 1;
+    rctx.stroke();
+  }
+
+  drawCardinals(hdg);
 }
 
 /* ---------- allow buttons ---------- */
