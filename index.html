@@ -675,7 +675,8 @@ async function nudgeImmersive() {
   } catch {}
 }
 if (matchMedia("(display-mode: fullscreen)").matches) {
-  for (const delay of [300, 800, 1500, 3000]) setTimeout(nudgeImmersive, delay);
+  nudgeImmersive();
+  for (const delay of [50, 200, 500]) setTimeout(nudgeImmersive, delay);
   addEventListener("pointerdown", nudgeImmersive, { capture: true });
 }
 
