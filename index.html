@@ -784,8 +784,8 @@ function drawRouteBox(dt) {
   const side = half - rad; // straight-edge half-length of the rounded square
   const ringR = size * 0.045;      // cardinal dot radius
   const markerInset = size * 0.16; // dot centre depth from the border
-  const minorTick = size * 0.013;  // minor tick length
-  const majorTick = markerInset - ringR; // major ticks end exactly at the dot
+  const majorTick = size * 0.04;   // major tick length, welded to the dot
+  const minorTick = size * 0.022;  // minor tick length
 
   // bearing -> [x, y, outward-normal-x, outward-normal-y] on the border
   function rosePoint(deg) {
@@ -810,36 +810,47 @@ function drawRouteBox(dt) {
   }
 
   // cardinal markers: letter in a hollow dot with its major tick welded to
-  // it — same bearing, same normal, one rigid body. The dot must always
-  // keep at least one minor-tick length of clear space to the border, so
-  // near a corner it slides back along the corner's ray until it clears
-  // and parks there while the heading sweeps past; the tick rides with it
-  // and can never overlap the circle.
+  // it — same bearing, same normal, one rigid body. The circle must keep a
+  // clear gap of at least one major-tick length to the border, measured
+  // from the circle's edge, so near a corner it slides back toward the
+  // dial centre until it clears and parks there while the heading sweeps
+  // past; the tick rides with it and can never overlap the circle.
   function drawCardinals(h) {
     rctx.font = Math.round(size * 0.05) + "px " + BEBAS;
     rctx.textAlign = "center";
     rctx.textBaseline = "middle";
+    const minGap = ringR + majorTick; // circle edge -> border clearance
+    // true distance from a point to the rounded border (square ⊕ corner
+    // circle): corner zone is rad minus distance to the corner centre,
+    // everywhere else it is the depth below the nearest offset edge
+    function borderDist(px, py) {
+      const u = Math.abs(px - cx), v = Math.abs(py - cy);
+      if (u > side || v > side) {
+        const du = u - side, dv = v - side;
+        return u > side && v > side ? rad - Math.hypot(du, dv) : rad - Math.max(du, dv);
+      }
+      return Math.min(side + rad - u, side + rad - v);
+    }
     const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
     for (const [t, deg, col] of cardinals) {
       const [x, y, nx, ny] = rosePoint(deg - h);
       let px = cx + x - nx * markerInset;
       let py = cy + y - ny * markerInset;
-      // park: the rounded border is the inner square ⊕ a circle of radius
-      // rad, so the dot's clearance is rad minus its distance to the square.
-      // If that leaves less than one minor tick, slide in along the ray
-      // from the nearest corner centre until it is exactly one tick.
-      const qx = Math.min(cx + side, Math.max(cx - side, px));
-      const qy = Math.min(cy + side, Math.max(cy - side, py));
-      const dx = px - qx, dy = py - qy;
-      const d = Math.hypot(dx, dy);
-      const inner = rad - minorTick; // max distance-to-square that still clears
-      if (d > inner) {
-        const k = d > 0 ? inner / d : 0;
-        px = qx + dx * k;
-        py = qy + dy * k;
+      // park: if the circle would come within one major tick of the
+      // border, slide it toward the dial centre until the gap from the
+      // circle's edge is exactly one tick; distance grows monotonically
+      // along that segment, so bisection nails the parking spot
+      if (borderDist(px, py) < minGap) {
+        let lo = 0, hi = 1;
+        for (let i = 0; i < 24; i++) {
+          const m = (lo + hi) / 2;
+          if (borderDist(px + (cx - px) * m, py + (cy - py) * m) < minGap) lo = m;
+          else hi = m;
+        }
+        px += (cx - px) * hi;
+        py += (cy - py) * hi;
       }
-      // major tick: rigidly welded, reaches exactly to the dot's edge
-      // (and exactly to the border when the dot isn't parked)
+      // major tick: rigidly welded, grows outward from the dot's edge
       rctx.beginPath();
       rctx.moveTo(px + nx * ringR, py + ny * ringR);
       rctx.lineTo(px + nx * (ringR + majorTick), py + ny * (ringR + majorTick));
