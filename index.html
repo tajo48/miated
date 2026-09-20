@@ -38,7 +38,11 @@
     flex-direction: column;
     align-items: center;
     gap: 14px;
-    padding: 14px 14px calc(24px + env(safe-area-inset-bottom, 0px));
+    padding:
+      calc(24px + env(safe-area-inset-top, 0px))
+      calc(14px + env(safe-area-inset-right, 0px))
+      calc(24px + env(safe-area-inset-bottom, 0px))
+      calc(14px + env(safe-area-inset-left, 0px));
     font-family: Verdana, "DejaVu Sans", Geneva, sans-serif;
     color: #c6d0f5;
     overscroll-behavior: none;
@@ -235,9 +239,9 @@
          terms still add on top where the browser provides them. */
       padding:
         calc(14px + env(safe-area-inset-top, 0px))
-        calc(28px + env(safe-area-inset-right, 0px))
+        calc(40px + env(safe-area-inset-right, 0px))
         calc(14px + env(safe-area-inset-bottom, 0px))
-        calc(28px + env(safe-area-inset-left, 0px));
+        calc(40px + env(safe-area-inset-left, 0px));
       gap: 10px;
     }
     .wrap {
@@ -619,6 +623,21 @@ function frame(ts) {
   if (routeShown && !routeCard.hidden) drawRouteBox(dt);
 }
 requestAnimationFrame(frame);
+
+/* Installed PWAs launch standalone on the first open after install (the
+   manifest's fullscreen mode only applies from the next cold start), so
+   promote to fullscreen on the first tap of that session. Skipped in a
+   normal browser tab so the page never hijacks the browser UI. */
+if (
+  !document.fullscreenElement &&
+  document.documentElement.requestFullscreen &&
+  matchMedia("(display-mode: standalone)").matches
+) {
+  const goFullscreen = () => {
+    document.documentElement.requestFullscreen().catch(() => {});
+  };
+  addEventListener("pointerdown", goFullscreen, { once: true, capture: true });
+}
 
 /* ---------- gps speed & acceleration (auto-start) ---------- */
 
