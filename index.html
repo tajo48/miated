@@ -460,6 +460,7 @@ function frame(ts) {
   // fast attack, slow release
   level += (target - level) * Math.min(1, dt * (target > level ? 16 : 5));
   beatPulse = Math.max(0, beatPulse - dt * 3);
+  updateHeading(dt);
 
   draw(ts, dt);
   if (routeShown && !routeCard.hidden) drawRouteBox(dt);
@@ -562,9 +563,10 @@ function onFix(p) {
     if (route.length > 1500) route = route.filter((_, i) => i % 2 === 0);
   }
 
-  // course-over-ground as a heading fallback while moving (no compass event)
-  if (!compassSeen && c.heading != null && !isNaN(c.heading) && speedSm !== null && speedSm > 1) {
-    heading = c.heading;
+  // GPS course-over-ground: truth while moving, and the reference the
+  // compass offset is calibrated against
+  if (c.heading != null && !isNaN(c.heading)) {
+    lastCourse = c.heading;
   }
 
   cur = { lat: c.latitude, lon: c.longitude };
@@ -603,9 +605,10 @@ let userZoom = 1;      // manual zoom factor while zooming
 let zoomFactor = 1;    // smoothed zoom actually applied
 let lastManualZoom = -1e9;
 let viewScale = null; // smoothed px-per-meter
-let heading = 0;      // degrees clockwise from north
-let headingSm = null;
-let compassSeen = false;
+let heading = null;       // fused heading, degrees clockwise from TRUE north
+let magHeading = null;    // raw compass heading (magnetic-north referenced)
+let compassOffset = null; // learned magnetic→true offset (declination + mount)
+let lastCourse = null;    // latest GPS course-over-ground (deg)
 
 const BEBAS = "'Bebas Neue', Impact, Haettenschweiler, 'Arial Narrow', sans-serif";
 
@@ -619,8 +622,7 @@ function onOrientation(e) {
     h = 360 - e.alpha;
   }
   if (h != null && !isNaN(h)) {
-    heading = ((h % 360) + 360) % 360;
-    compassSeen = true;
+    magHeading = ((h % 360) + 360) % 360; // magnetic-north referenced
   }
 }
 window.addEventListener("deviceorientationabsolute", onOrientation, true);
@@ -661,6 +663,35 @@ function releasePinch(e) {
 }
 routeCanvas.addEventListener("pointerup", releasePinch);
 routeCanvas.addEventListener("pointercancel", releasePinch);
+
+/* ---------- heading fusion: GPS course + magnetometer ---------- */
+
+/* How proper GPS apps do it: while moving, course-over-ground is the truth
+   and the compass is continuously calibrated against it — the learned offset
+   absorbs magnetic declination AND how the phone is mounted. While standing
+   still, the calibrated compass takes over. */
+function updateHeading(dt) {
+  const moving = (speedSm || 0) > 1.2 && lastCourse !== null;
+  let target = null;
+
+  if (moving) {
+    target = lastCourse;
+    if (magHeading !== null) {
+      const diff = ((lastCourse - magHeading + 540) % 360) - 180;
+      compassOffset = compassOffset === null ? diff : compassOffset + diff * 0.06;
+      compassOffset = ((compassOffset + 540) % 360) - 180;
+    }
+  } else if (magHeading !== null) {
+    target = magHeading + (compassOffset || 0);
+  }
+
+  if (target !== null) {
+    target = ((target % 360) + 360) % 360;
+    if (heading === null) heading = target;
+    const dh = ((target - heading + 540) % 360) - 180;
+    heading = (heading + dh * Math.min(1, dt * 5) + 360) % 360;
+  }
+}
 
 function drawRouteBox(dt) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -716,10 +747,8 @@ function drawRouteBox(dt) {
   viewScale = viewScale === null ? target : viewScale + (target - viewScale) * Math.min(1, dt * 3);
   const s = viewScale;
 
-  // heading: smooth across the wrap-around at 0/360
-  if (headingSm === null) headingSm = heading;
-  let dh = ((heading - headingSm + 540) % 360) - 180;
-  headingSm = (headingSm + dh * Math.min(1, dt * 6) + 360) % 360;
+  // rose rotation: the fused, smoothed heading (0 = true north at top)
+  const roseHeading = heading || 0;
 
   // the route: dots, older ones fading toward the start
   rctx.save();
@@ -754,7 +783,7 @@ function drawRouteBox(dt) {
   const side = half - rad;
   const cArc = (Math.PI / 2) * rad;
   const P = 8 * side + 4 * cArc;
-  const headArc = (headingSm / 360) * P;
+  const headArc = (roseHeading / 360) * P;
 
   function rosePoint(s) {
     s = ((s % P) + P) % P;
