@@ -475,6 +475,8 @@ requestAnimationFrame(frame);
 let prev = null;       // { lat, lon, t, speed } of the previous fix
 let speedSm = null;    // EMA of speed (m/s)
 let accelSm = null;    // EMA of acceleration (m/s²)
+let maxSpeed = 0;      // session peaks, for the share image
+let maxAccel = 0;
 let cur = null;        // latest fix { lat, lon }
 
 let watchId = null;
@@ -582,12 +584,14 @@ function onFix(p) {
   if (speed !== null) {
     speedSm = speedSm === null ? speed : speedSm + (speed - speedSm) * 0.35;
     speedEl.textContent = (speedSm * 3.6).toFixed(1);
+    maxSpeed = Math.max(maxSpeed, speedSm);
   }
 
   if (speed !== null && prev && prev.speed !== null && t > prev.t) {
     const a = (speed - prev.speed) / ((t - prev.t) / 1000);
     accelSm = accelSm === null ? a : accelSm + (a - accelSm) * 0.25;
     accelEl.textContent = accelSm.toFixed(2);
+    maxAccel = Math.max(maxAccel, Math.abs(accelSm));
   }
 
   prev = { lat: c.latitude, lon: c.longitude, t, speed };
@@ -848,13 +852,15 @@ function routeDistance() {
 
 /* Offscreen render of the dial at 2x for a crisp share image: same
    projection, fit rule and route layer as the live canvas (reused via
-   routeProjector / routeFitExtent / drawRouteLayer), plus a caption strip. */
+   routeProjector / routeFitExtent / drawRouteLayer), framed by a header
+   and a stats row (distance, duration, peak speed, peak acceleration). */
 function renderRouteShare() {
-  const pad = 24;
+  const pad = 30;
   const dial = 520;
-  const strip = 88;
+  const headH = 64;
+  const statsH = 96;
   const W = dial + pad * 2;
-  const H = dial + pad * 2 + strip;
+  const H = pad + headH + 18 + dial + 24 + statsH + pad;
   const out = document.createElement("canvas");
   out.width = W * 2;
   out.height = H * 2;
@@ -864,13 +870,30 @@ function renderRouteShare() {
   g.fillStyle = "#303446";
   g.fillRect(0, 0, W, H);
 
-  const hdg = heading || 0;
-  const cx = pad + dial / 2;
-  const cy = pad + dial / 2;
+  /* header: brand left, date right, hairline underneath */
+  g.textBaseline = "alphabetic";
+  g.textAlign = "left";
+  g.fillStyle = "#8caaee";
+  g.font = "30px " + BEBAS;
+  g.fillText("MIATED · ROUTE", pad, pad + 34);
+  g.textAlign = "right";
+  g.fillStyle = "#a5adce";
+  g.font = "22px " + BEBAS;
+  g.fillText(new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }), W - pad, pad + 32);
+  g.strokeStyle = "#51576d";
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(pad, pad + headH);
+  g.lineTo(W - pad, pad + headH);
+  g.stroke();
+
+  /* dial */
+  const dy = pad + headH + 18;
+  const cx = W / 2;
+  const cy = dy + dial / 2;
   const dialHalf = dial / 2;
   const dialRad = 16;
 
-  // dial background
   g.beginPath();
   g.moveTo(cx - dialHalf + dialRad, cy - dialHalf);
   g.arcTo(cx + dialHalf, cy - dialHalf, cx + dialHalf, cy + dialHalf, dialRad);
@@ -885,11 +908,14 @@ function renderRouteShare() {
   g.stroke();
 
   // heading-up fit, same rule as the live dial
+  const hdg = heading || 0;
   const proj = routeProjector(cur, hdg);
   const s = ((dialHalf - 14) * 0.86) / routeFitExtent(proj, route);
 
   // route layer, clipped to the dial
   g.save();
+  g.beginPath();
+  g.rect(cx - dialHalf + 2, cy - dialHalf + 2, dial - 4, dial - 4);
   g.clip();
   drawRouteLayer(g, cx, cy, s, hdg, cur, route, 4, 8);
   g.restore();
@@ -911,21 +937,38 @@ function renderRouteShare() {
     g.fillStyle = col;
     g.fillText(t, lx, ly);
   }
+  g.textBaseline = "alphabetic";
 
-  // caption strip: distance traveled + date
-  const by = pad * 2 + dial;
-  g.textAlign = "left";
-  g.fillStyle = "#a5adce";
-  g.font = "26px " + BEBAS;
-  const km = routeDistance();
-  g.fillText("DISTANCE  " + (km < 950 ? km.toFixed(0) + " M" : (km / 1000).toFixed(2) + " KM"), pad, by + 34);
-  g.textAlign = "right";
-  g.fillStyle = "#8caaee";
-  g.fillText(new Date().toLocaleDateString(), W - pad, by + 34);
+  /* stats row: four evenly spaced cells, small label over a big value */
+  const sy = dy + dial + 24;
+  const dist = routeDistance();
+  const first = route[0], lastT = route[route.length - 1];
+  const mins = first && lastT ? Math.max(1, Math.round((lastT.t - first.t) / 60000)) : 0;
+  const cells = [
+    ["DISTANCE", dist < 950 ? dist.toFixed(0) + " m" : (dist / 1000).toFixed(2) + " km"],
+    ["TIME", mins < 60 ? mins + " min" : Math.floor(mins / 60) + " h " + (mins % 60) + " min"],
+    ["TOP SPEED", (maxSpeed * 3.6).toFixed(1) + " km/h"],
+    ["MAX ACCEL", maxAccel.toFixed(2) + " m/s²"],
+  ];
+  const cellW = (W - pad * 2) / cells.length;
   g.textAlign = "center";
-  g.fillStyle = "#626880";
-  g.font = "20px " + BEBAS;
-  g.fillText("MIATED · ROUTE", W / 2, by + 66);
+  cells.forEach(([label, value], i) => {
+    const x = pad + cellW * i + cellW / 2;
+    g.fillStyle = "#626880";
+    g.font = "17px " + BEBAS;
+    g.fillText(label, x, sy + 22);
+    g.fillStyle = "#8caaee";
+    g.font = "34px " + BEBAS;
+    g.fillText(value, x, sy + 60);
+    if (i > 0) {
+      g.strokeStyle = "#414559";
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(pad + cellW * i, sy + 4);
+      g.lineTo(pad + cellW * i, sy + 66);
+      g.stroke();
+    }
+  });
   return out;
 }
 
