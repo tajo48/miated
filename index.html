@@ -784,6 +784,7 @@ function drawRouteBox(dt) {
   const side = half - rad; // straight-edge half-length of the rounded square
   const ringR = size * 0.045;      // cardinal dot radius
   const markerInset = size * 0.16; // dot centre depth from the border
+  const minorTick = size * 0.013;  // minor tick length
   const majorTick = markerInset - ringR; // major ticks end exactly at the dot
 
   // bearing -> [x, y, outward-normal-x, outward-normal-y] on the border
@@ -808,12 +809,12 @@ function drawRouteBox(dt) {
     return [x, y, nx, ny];
   }
 
-  // cardinal markers: letter in a hollow dot, rigidly welded to its 90°
-  // major tick — same bearing, same normal, fixed inset. Marker and tick are
-  // one rigid body for all headings: the tick reaches exactly to the dot's
-  // edge (majorTick = markerInset - ringR) so they always connect and the
-  // tick can never overlap the circle. No parking, no clamps, no branches —
-  // nothing that can snap, slide, release or separate.
+  // cardinal markers: letter in a hollow dot with its major tick welded to
+  // it — same bearing, same normal, one rigid body. The dot must always
+  // keep at least one minor-tick length of clear space to the border, so
+  // near a corner it slides back along the corner's ray until it clears
+  // and parks there while the heading sweeps past; the tick rides with it
+  // and can never overlap the circle.
   function drawCardinals(h) {
     rctx.font = Math.round(size * 0.05) + "px " + BEBAS;
     rctx.textAlign = "center";
@@ -821,8 +822,30 @@ function drawRouteBox(dt) {
     const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
     for (const [t, deg, col] of cardinals) {
       const [x, y, nx, ny] = rosePoint(deg - h);
-      const px = cx + x - nx * markerInset;
-      const py = cy + y - ny * markerInset;
+      let px = cx + x - nx * markerInset;
+      let py = cy + y - ny * markerInset;
+      // park: the rounded border is the inner square ⊕ a circle of radius
+      // rad, so the dot's clearance is rad minus its distance to the square.
+      // If that leaves less than one minor tick, slide in along the ray
+      // from the nearest corner centre until it is exactly one tick.
+      const qx = Math.min(cx + side, Math.max(cx - side, px));
+      const qy = Math.min(cy + side, Math.max(cy - side, py));
+      const dx = px - qx, dy = py - qy;
+      const d = Math.hypot(dx, dy);
+      const inner = rad - minorTick; // max distance-to-square that still clears
+      if (d > inner) {
+        const k = d > 0 ? inner / d : 0;
+        px = qx + dx * k;
+        py = qy + dy * k;
+      }
+      // major tick: rigidly welded, reaches exactly to the dot's edge
+      // (and exactly to the border when the dot isn't parked)
+      rctx.beginPath();
+      rctx.moveTo(px + nx * ringR, py + ny * ringR);
+      rctx.lineTo(px + nx * (ringR + majorTick), py + ny * (ringR + majorTick));
+      rctx.strokeStyle = "#8caaee";
+      rctx.lineWidth = 2;
+      rctx.stroke();
       rctx.beginPath();
       rctx.arc(px, py, ringR, 0, Math.PI * 2);
       rctx.strokeStyle = col;
@@ -833,17 +856,16 @@ function drawRouteBox(dt) {
     }
   }
 
-  // ticks every 10°, majors every 90° — each tick starts AT the border so
-  // the lines touch it
+  // minor ticks every 10° — each tick starts AT the border so the lines
+  // touch it (majors are drawn with their cardinal dots above)
   for (let i = 0; i < 36; i++) {
+    if (i % 9 === 0) continue; // majors are welded to the cardinal dots
     const [x, y, nx, ny] = rosePoint(i * 10 - hdg);
-    const major = i % 9 === 0;
-    const tickLen = major ? majorTick : size * 0.022; // majors reach the dot
     rctx.beginPath();
     rctx.moveTo(cx + x, cy + y);
-    rctx.lineTo(cx + x - nx * tickLen, cy + y - ny * tickLen);
-    rctx.strokeStyle = major ? "#8caaee" : "#626880";
-    rctx.lineWidth = major ? 2 : 1;
+    rctx.lineTo(cx + x - nx * minorTick, cy + y - ny * minorTick);
+    rctx.strokeStyle = "#626880";
+    rctx.lineWidth = 1;
     rctx.stroke();
   }
 
