@@ -793,35 +793,37 @@ function drawRouteBox(dt) {
 
   function rosePoint(s) {
     s = ((s % P) + P) % P;
-    if (s < side) return [cx + s, cy - half, 0, -1];
+    // [x, y, outward-normal-x, outward-normal-y, cornerDepth]
+    // cornerDepth: 0 on straight edges, 0→1→0 across a corner arc
+    if (s < side) return [s - side, -half, 0, -1, 0];
     s -= side;
     if (s < cArc) {
       const a = -Math.PI / 2 + s / rad;
-      return [cx + half - rad + rad * Math.cos(a), cy - half + rad + rad * Math.sin(a), Math.cos(a), Math.sin(a)];
+      return [half - rad + rad * Math.cos(a), -half + rad + rad * Math.sin(a), Math.cos(a), Math.sin(a), Math.sin((s / cArc) * Math.PI)];
     }
     s -= cArc;
-    if (s < 2 * side) return [cx + half, cy - side + s, 1, 0];
+    if (s < 2 * side) return [half, -side + s, 1, 0, 0];
     s -= 2 * side;
     if (s < cArc) {
       const a = s / rad;
-      return [cx + half - rad + rad * Math.cos(a), cy + half - rad + rad * Math.sin(a), Math.cos(a), Math.sin(a)];
+      return [half - rad + rad * Math.cos(a), side - rad + rad * Math.sin(a), Math.cos(a), Math.sin(a), Math.sin((s / cArc) * Math.PI)];
     }
     s -= cArc;
-    if (s < 2 * side) return [cx + side - s, cy + half, 0, 1];
+    if (s < 2 * side) return [side - s, half, 0, 1, 0];
     s -= 2 * side;
     if (s < cArc) {
       const a = Math.PI / 2 + s / rad;
-      return [cx - half + rad + rad * Math.cos(a), cy + half - rad + rad * Math.sin(a), Math.cos(a), Math.sin(a)];
+      return [-half + rad + rad * Math.cos(a), side - rad + rad * Math.sin(a), Math.cos(a), Math.sin(a), Math.sin((s / cArc) * Math.PI)];
     }
     s -= cArc;
-    if (s < 2 * side) return [cx - half, cy + side - s, -1, 0];
+    if (s < 2 * side) return [-half, side - s, -1, 0, 0];
     s -= 2 * side;
     if (s < cArc) {
       const a = Math.PI + s / rad;
-      return [cx - half + rad + rad * Math.cos(a), cy - half + rad + rad * Math.sin(a), Math.cos(a), Math.sin(a)];
+      return [-half + rad + rad * Math.cos(a), -side + rad + rad * Math.sin(a), Math.cos(a), Math.sin(a), Math.sin((s / cArc) * Math.PI)];
     }
     s -= cArc;
-    return [cx - side + s, cy - half, 0, -1];
+    return [-side + s, -half, 0, -1, 0];
   }
 
   // ticks every 10°, majors every 90° — each tick starts AT the border so
@@ -831,24 +833,29 @@ function drawRouteBox(dt) {
     const major = i % 9 === 0;
     const tickLen = size * (major ? 0.05 : 0.022);
     rctx.beginPath();
-    rctx.moveTo(x, y);
-    rctx.lineTo(x - nx * tickLen, y - ny * tickLen);
+    rctx.moveTo(cx + x, cy + y);
+    rctx.lineTo(cx + x - nx * tickLen, cy + y - ny * tickLen);
     rctx.strokeStyle = major ? "#8caaee" : "#626880";
     rctx.lineWidth = major ? 2 : 1;
     rctx.stroke();
   }
 
-  // cardinal letters ride the perimeter just inside the edge
+  // cardinal letters ride the perimeter just inside the edge, fading out
+  // around the corners so they only ever sit on the straight sides
   rctx.textAlign = "center";
   rctx.textBaseline = "middle";
   rctx.font = Math.round(size * 0.055) + "px " + BEBAS;
   const cardinals = [["N", 0, "#e78284"], ["E", 0.25, "#a5adce"], ["S", 0.5, "#a5adce"], ["W", 0.75, "#a5adce"]];
   for (const [t, frac, col] of cardinals) {
-    const [x, y, nx, ny] = rosePoint(frac * P - headArc);
+    const [x, y, nx, ny, corner] = rosePoint(frac * P - headArc);
     const inset = size * 0.12; // clear of the ticks: letters live inside them
+    const alpha = 1 - corner;
+    if (alpha <= 0.05) continue;
+    rctx.globalAlpha = alpha;
     rctx.fillStyle = col;
-    rctx.fillText(t, x - nx * inset, y - ny * inset);
+    rctx.fillText(t, cx + x - nx * inset, cy + y - ny * inset);
   }
+  rctx.globalAlpha = 1;
 }
 
 /* ---------- allow buttons ---------- */
