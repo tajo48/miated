@@ -87,6 +87,12 @@ fn main() -> std::io::Result<()> {
         host
     };
     eprintln!("miated listening on http://{display_host}:{port}");
+    if display_host != "localhost" && !display_host.starts_with("127.") {
+        eprintln!(
+            "note: over http://LAN-IP, Chrome blocks tab capture & GPS (secure-context only). \
+Use http://localhost:{port} on this machine, or deploy for https."
+        );
+    }
 
     for stream in listener.incoming() {
         match stream {

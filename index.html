@@ -225,7 +225,7 @@
     </div>
   </div>
 
-  <div class="hint">The dot field behind the site dances to any audio playing on this device — tap Listen and share a tab (Spotify, YouTube…) with "share audio". Bass lights the middle rings, highs the outer ones, and every beat sends a wave outward. GPS needs https or localhost.</div>
+  <div class="hint">The dot field behind the site dances to any audio playing on this device — tap Listen and share a tab (Spotify, YouTube…) with "share audio". Bass lights the middle rings, highs the outer ones, and every beat sends a wave outward. Capture &amp; GPS need a secure context: <b>localhost</b> on this machine, or <b>https</b> (e.g. the GitHub Pages deploy) — plain http://LAN-IP pages are blocked by Chrome. Desktop-only workaround: chrome://flags/#unsafely-treat-insecure-origin-as-secure.</div>
 </div>
 
 <div class="install-pill" id="installPill" hidden>
@@ -282,8 +282,15 @@ listenBtn.addEventListener("click", () => {
 });
 
 async function startListen() {
+  if (!window.isSecureContext) {
+    // Chrome hides navigator.mediaDevices entirely on plain http:// pages —
+    // only localhost and https count. This is why "it says unsupported".
+    listenStatus.title = "Capture is blocked on http:// pages. Open the site via localhost, or use the https GitHub Pages URL. Desktop workaround: chrome://flags/#unsafely-treat-insecure-origin-as-secure";
+    listenStatus.textContent = "Blocked: http:// pages can't capture — use localhost or https";
+    return;
+  }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-    listenStatus.textContent = "Not supported in this browser — try Chrome";
+    listenStatus.textContent = "This browser has no tab capture — try Chrome or Firefox";
     return;
   }
   try {
@@ -406,7 +413,13 @@ function rebuildGrid() {
   const w = window.innerWidth;
   const h = window.innerHeight;
   const unit = Math.min(w, h);
-  const spacing = Math.max(26, Math.min(44, unit / 14));
+  // Really dense: 6–12 px cells, relaxed only when the viewport is so large
+  // that the dot count would tank the frame rate.
+  let spacing = Math.max(6, Math.min(12, unit / 64));
+  const maxDots = 16000;
+  if ((w / spacing) * (h / spacing) > maxDots) {
+    spacing = Math.sqrt((w * h) / maxDots);
+  }
   gridSpacing = spacing;
 
   const cx = w / 2;
@@ -446,8 +459,12 @@ function draw(ts, dt) {
     if (waves[i].e <= 0 || waves[i].r > 1.3) waves.splice(i, 1);
   }
 
-  const maxR = Math.hypot(w, h) / 2;
-  const baseR = gridSpacing * 0.085;
+  const baseR = gridSpacing * 0.5; // radius = half a cell → neighbors just touch
+
+  /* Thousands of dots per frame: batch them into a handful of Path2D
+     buckets (quantized hue × alpha) and issue one fill per bucket — per-dot
+     fill calls would melt the frame rate at this density. */
+  const buckets = new Map();
 
   for (const d of dots) {
     // frequency band by distance from center: bass in the middle, highs outside
@@ -465,16 +482,29 @@ function draw(ts, dt) {
     }
 
     // idle: faint breathing ripple so the pattern is alive but quiet
-    const idle = 0.05 + 0.035 * Math.sin(t * 0.9 - d.dist * 6);
+    const idle = 0.04 + 0.03 * Math.sin(t * 0.9 - d.dist * 6);
 
-    const a = Math.min(0.95, idle + v * 0.8 + waveBoost * 0.5);
-    const r = baseR * (1 + v * 1.2 + waveBoost * 0.9);
-    const hue = (d.hue + hueDrift) % 360;
+    let a = idle + v * 0.75 + waveBoost * 0.45;
+    if (a <= 0.02) continue;
+    if (a > 0.92) a = 0.92;
+    const aQ = Math.round(a * 12) / 12;
+    const hue = (((d.hue + hueDrift) % 360) + 360) % 360;
+    const hueQ = (Math.round(hue / 15) * 15) % 360;
+    const r = Math.min(gridSpacing * 1.05, baseR * (1 + v * 1.1 + waveBoost * 0.8));
 
-    ctx.beginPath();
-    ctx.arc(d.x, d.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = `hsla(${hue}, ${45 + v * 30}%, ${38 + v * 24 + waveBoost * 12}%, ${a})`;
-    ctx.fill();
+    const key = (hueQ / 15) * 13 + Math.round(aQ * 12);
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = [new Path2D(), hueQ, aQ];
+      buckets.set(key, bucket);
+    }
+    bucket[0].moveTo(d.x + r, d.y);
+    bucket[0].arc(d.x, d.y, r, 0, Math.PI * 2);
+  }
+
+  for (const [path, hueQ, aQ] of buckets.values()) {
+    ctx.fillStyle = `hsla(${hueQ}, ${45 + aQ * 30}%, ${36 + aQ * 26}%, ${aQ})`;
+    ctx.fill(path);
   }
 }
 
@@ -523,6 +553,10 @@ gpsBtn.addEventListener("click", () => {
     gpsStatus.textContent = "GPS off — live speed & acceleration from location";
     speedEl.textContent = "–";
     accelEl.textContent = "–";
+    return;
+  }
+  if (!window.isSecureContext) {
+    gpsStatus.textContent = "Blocked: http:// pages get no GPS — use localhost or https";
     return;
   }
   if (!("geolocation" in navigator)) {
