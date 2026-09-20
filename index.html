@@ -79,124 +79,40 @@
     font-weight: normal;
   }
 
-  /* ---------- cards ---------- */
-  .card {
+  /* ---------- the readouts ---------- */
+  .stats { display: flex; flex-wrap: wrap; align-items: stretch; gap: 14px; width: 100%; }
+  .stat {
+    flex: 1 1 150px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
     background: rgba(48, 52, 70, 0.82); /* surface, slightly clear so the dots peek through */
     -webkit-backdrop-filter: blur(6px);
     backdrop-filter: blur(6px);
     border: 2px solid #51576d;
     border-radius: 6px;
-    padding: 12px 14px;
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-
-  button {
-    font-family: var(--bebas);
-    font-size: 18px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    background: #8caaee;
-    color: #292c3c;
-    border: 2px solid #51576d;
-    border-radius: 6px;
-    padding: 8px 16px 5px;
-    cursor: pointer;
-    touch-action: manipulation;
-    user-select: none;
-    -webkit-user-select: none;
-    transition: transform 0.08s ease;
-  }
-  button:disabled { opacity: 0.35; cursor: default; }
-  button:focus-visible { outline: 2px solid #8caaee; outline-offset: 2px; }
-  button:active:not(:disabled) { transform: scale(0.96); }
-  button.secondary { background: transparent; color: #8caaee; }
-
-  .track {
-    flex: 1 1 120px;
-    min-width: 0;
-    font-size: 12px;
-    color: #a5adce;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    user-select: none;
-  }
-
-  .stats { align-items: stretch; }
-  .stat {
-    flex: 1 1 120px;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1px;
-    background: rgba(65, 69, 89, 0.9);
-    border: 2px solid #51576d;
-    border-radius: 6px;
-    padding: 9px 12px 7px;
+    padding: 26px 16px 20px;
     user-select: none;
   }
   .stat .label {
-    font-size: 10px;
-    letter-spacing: 2px;
+    font-size: 12px;
+    letter-spacing: 3px;
     text-transform: uppercase;
     color: #a5adce;
   }
   .stat .value {
     font-family: var(--bebas);
-    font-size: 34px;
-    line-height: 1.05;
+    font-size: 72px;
+    line-height: 1;
     color: #8caaee;
     font-variant-numeric: tabular-nums;
-    min-height: 36px;
+    min-height: 72px;
     white-space: nowrap;
   }
-  .stat .unit { font-size: 11px; color: #a5adce; }
-
-  .hint { font-size: 12px; color: #a5adce; line-height: 1.5; text-align: center; max-width: 92vw; }
-
-  /* Quiet install prompt pinned to the bottom edge; hidden until installable. */
-  .install-pill {
-    position: fixed;
-    left: 50%;
-    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-    transform: translate(-50%, 10px);
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 4px 14px;
-    background: rgba(65, 69, 89, 0.92);
-    border: 2px solid #51576d;
-    border-radius: 999px;
-    box-shadow: 0 6px 24px rgba(23, 26, 35, 0.5);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.35s ease, transform 0.35s ease;
-    z-index: 10;
-  }
-  .install-pill[hidden] { display: none; }
-  .install-pill.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
-  .install-pill button {
-    font-family: var(--bebas);
-    background: transparent;
-    border: 0;
-    border-radius: 999px;
-    cursor: pointer;
-    color: #8caaee;
-    font-size: 16px;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    padding: 5px 8px 2px;
-    white-space: nowrap;
-  }
-  .install-pill button:hover:not(:disabled) { background: transparent; color: #c6d0f5; }
+  .stat .unit { font-size: 13px; color: #a5adce; }
 </style>
 </head>
 <body>
@@ -208,30 +124,10 @@
     <div class="brandRow"><img src="favicon.svg" alt=""><h1>Miated</h1></div>
   </div>
 
-  <div class="card">
-    <div class="row">
-      <button id="listenBtn">Listen</button>
-      <button id="tabBtn" class="secondary" title="Direct capture: share a tab with audio (best quality; needed when music plays on headphones)">Tab audio</button>
-      <span id="listenStatus" class="track">Not listening — tap Listen (microphone) or Tab audio</span>
-    </div>
+  <div class="stats">
+    <div class="stat"><span class="label">Speed</span><span class="value" id="speed">–</span><span class="unit">km/h</span></div>
+    <div class="stat"><span class="label">Accel</span><span class="value" id="accel">–</span><span class="unit">m/s²</span></div>
   </div>
-
-  <div class="card">
-    <div class="row stats">
-      <div class="stat"><span class="label">Speed</span><span class="value" id="speed">–</span><span class="unit">km/h</span></div>
-      <div class="stat"><span class="label">Accel</span><span class="value" id="accel">–</span><span class="unit">m/s²</span></div>
-    </div>
-    <div class="row">
-      <button id="gpsBtn">Start GPS</button>
-      <span id="gpsStatus" class="track">GPS off — live speed &amp; acceleration from location</span>
-    </div>
-  </div>
-
-  <div class="hint">Listen uses the microphone — it hears any app playing out loud (Spotify, YouTube, radio…). Music on headphones is invisible to a mic, so use Tab audio for a direct digital copy. Both need a secure context: <b>localhost</b> or <b>https</b> — plain http://LAN-IP pages are blocked by Chrome.</div>
-</div>
-
-<div class="install-pill" id="installPill" hidden>
-  <button class="install-accept" id="installAccept" type="button">Install</button>
 </div>
 
 <script>
@@ -241,27 +137,19 @@
 
 const canvas = document.getElementById("viz");
 const ctx = canvas.getContext("2d");
-const listenBtn = document.getElementById("listenBtn");
-const tabBtn = document.getElementById("tabBtn");
-const listenStatus = document.getElementById("listenStatus");
 const speedEl = document.getElementById("speed");
 const accelEl = document.getElementById("accel");
-const gpsBtn = document.getElementById("gpsBtn");
-const gpsStatus = document.getElementById("gpsStatus");
 
-/* ---------- audio capture ---------- */
+/* ---------- microphone (auto-start) ---------- */
 
-/* There is no player here — the app listens to audio played by OTHER apps
-   via getDisplayMedia (share a tab/screen with audio). The captured stream
-   only feeds an analyser; the original audio keeps playing untouched. */
+/* No player, no buttons: on load the page asks for the microphone and GPS.
+   The mic hears whatever is playing out loud — any app. Music on headphones
+   is invisible to a mic; that is the one trade-off of the buttonless flow. */
 
 let actx = null;
 let analyser = null;
 let freq = null;
-let stream = null;
-let srcNode = null;
 let listening = false;
-let mode = null; // "mic" | "tab"
 
 function ensureGraph() {
   if (actx) {
@@ -277,143 +165,38 @@ function ensureGraph() {
   freq = new Uint8Array(analyser.frequencyBinCount);
 }
 
-listenBtn.addEventListener("click", () => {
-  if (mode === "mic") stopListen();
-  else startMic();
+/* Autoplay policy: a fresh AudioContext stays suspended until the user
+   touches the page. Grab the first gesture anywhere and wake it. */
+function wakeAudio() {
+  if (actx && actx.state === "suspended") actx.resume().catch(() => {});
+}
+["pointerdown", "touchstart", "keydown"].forEach((ev) =>
+  document.addEventListener(ev, wakeAudio)
+);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") wakeAudio();
 });
 
-tabBtn.addEventListener("click", () => {
-  if (mode === "tab") stopListen();
-  else startTab();
-});
-
-function setButtons() {
-  listenBtn.textContent = mode === "mic" ? "Stop" : "Listen";
-  tabBtn.textContent = mode === "tab" ? "Stop" : "Tab audio";
-  listenBtn.disabled = mode === "tab";
-  tabBtn.disabled = mode === "mic";
-}
-
-function blockedStatus() {
-  listenStatus.title = "Microphone & capture are blocked on http:// pages. Open the site via localhost, or use the https GitHub Pages URL. Desktop workaround: chrome://flags/#unsafely-treat-insecure-origin-as-secure";
-  listenStatus.textContent = "Blocked: http:// pages get no mic — use localhost or https";
-}
-
-/* Microphone: the simple path — it hears whatever is playing out loud, from
-   any app. Music on headphones never reaches it, hence the tab option. */
-async function startMic() {
-  if (!window.isSecureContext) {
-    blockedStatus();
-    return;
+function startMic() {
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return; // no mic path (insecure origin / unsupported) — dots just idle
   }
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    listenStatus.textContent = "Microphone capture not supported in this browser";
-    return;
-  }
-  try {
-    listenBtn.disabled = true;
-    const media = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false,  // phone-call processing would duck the beats
-        noiseSuppression: false,  // keep the drums
-        autoGainControl: false,   // keep loudness honest for the visualizer
-      },
-    });
-    listenBtn.disabled = false;
+  navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: false,  // phone-call processing would duck the beats
+      noiseSuppression: false,  // keep the drums
+      autoGainControl: false,   // keep loudness honest for the visualizer
+    },
+  }).then((media) => {
     ensureGraph();
-    srcNode = actx.createMediaStreamSource(media);
+    const srcNode = actx.createMediaStreamSource(media);
     srcNode.connect(analyser);
-    stream = media;
-    mode = "mic";
     listening = true;
-    setButtons();
-    listenStatus.textContent = "Listening (mic) — play music out loud";
-  } catch (err) {
-    listenBtn.disabled = false;
-    if (err && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")) {
-      listenStatus.textContent = "Mic permission denied — allow microphone access";
-    } else if (err && err.name === "NotFoundError") {
-      listenStatus.textContent = "No microphone found on this device";
-    } else if (err && err.name === "NotReadableError") {
-      listenStatus.textContent = "Microphone is busy in another app";
-    } else {
-      listenStatus.textContent = "Mic capture failed: " + (err && err.name ? err.name : "unknown");
-    }
-  }
-}
-
-/* Tab capture: the direct path — a digital copy of a tab's audio, no
-   speaker dependency. Secondary because of the picker flow. */
-async function startTab() {
-  if (!window.isSecureContext) {
-    blockedStatus();
-    return;
-  }
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-    listenStatus.textContent = "Tab capture not supported in this browser";
-    return;
-  }
-  try {
-    listenBtn.disabled = true;
-    tabBtn.disabled = true;
-    const media = await navigator.mediaDevices.getDisplayMedia({
-      video: true, // required by Chromium to offer the "share audio" checkbox
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      },
-      systemAudio: "include", // offer system-audio sharing where supported
-      surfaceSwitching: "include", // hot-swap the shared tab without re-picking
-      selfBrowserSurface: "exclude", // don't offer to capture miated itself
+    wakeAudio();
+    media.getAudioTracks()[0].addEventListener("ended", () => {
+      listening = false;
     });
-    listenBtn.disabled = false;
-    tabBtn.disabled = false;
-
-    /* Keep the video track ALIVE. Stopping it ends the whole capture session
-       on several Chromium versions — audio included. We simply never draw it. */
-
-    if (!media.getAudioTracks().length) {
-      media.getTracks().forEach((t) => t.stop());
-      listenStatus.textContent = "No audio shared — pick a tab and tick “share audio”";
-      return;
-    }
-
-    stream = media;
-    media.getAudioTracks()[0].addEventListener("ended", stopListen);
-
-    ensureGraph();
-    srcNode = actx.createMediaStreamSource(media);
-    srcNode.connect(analyser); // analyser only — nothing plays twice
-
-    mode = "tab";
-    listening = true;
-    setButtons();
-    listenStatus.textContent = "Listening (tab) — play something in the shared tab";
-  } catch (err) {
-    listenBtn.disabled = false;
-    tabBtn.disabled = false;
-    if (err && err.name === "NotAllowedError") {
-      listenStatus.textContent = "Share cancelled";
-    } else {
-      listenStatus.textContent = "Capture failed: " + (err && err.name ? err.name : "unknown");
-    }
-  }
-}
-
-function stopListen() {
-  if (stream) {
-    stream.getTracks().forEach((t) => t.stop());
-    stream = null;
-  }
-  if (srcNode) {
-    try { srcNode.disconnect(); } catch {}
-    srcNode = null;
-  }
-  mode = null;
-  listening = false;
-  setButtons();
-  listenStatus.textContent = "Not listening — tap Listen (microphone) or Tab audio";
+  }).catch(() => {}); // denied or unavailable: the field simply stays idle
 }
 
 /* ---------- analysis: level, beats, tempo ---------- */
@@ -421,6 +204,7 @@ function stopListen() {
 let level = 0;        // smoothed overall loudness 0..1
 let beatPulse = 0;    // 1 on a detected beat, decays
 let tempo = 1;        // smoothed speed multiplier derived from BPM
+let hueDrift = 0;     // slow rotation of the field's palette
 
 const bassHistory = [];
 const beatIntervals = [];
@@ -474,7 +258,7 @@ function analyse(ts) {
 
 const dots = []; // { x, y, dist, hue } in CSS px, rebuilt on resize
 let gridSpacing = 0;
-let hueDrift = 0;
+let hueDrift2 = 0;
 
 function rebuildGrid() {
   dots.length = 0;
@@ -518,6 +302,7 @@ function draw(ts, dt) {
 
   const t = ts / 1000;
   hueDrift += dt * 4;
+  hueDrift2 += dt * 2;
 
   // advance the beat waves
   const waveSpeed = (0.28 + tempo * 0.22) * dt;
@@ -556,7 +341,7 @@ function draw(ts, dt) {
     if (a <= 0.02) continue;
     if (a > 0.92) a = 0.92;
     const aQ = Math.round(a * 12) / 12;
-    const hue = (((d.hue + hueDrift) % 360) + 360) % 360;
+    const hue = (((d.hue + hueDrift + hueDrift2 * 0.5) % 360) + 360) % 360;
     const hueQ = (Math.round(hue / 15) * 15) % 360;
     const r = Math.min(gridSpacing * 1.05, baseR * (1 + v * 1.1 + waveBoost * 0.8));
 
@@ -577,8 +362,6 @@ function draw(ts, dt) {
 }
 
 let lastTs = 0;
-let silentFor = 0;
-let lastStatusTs = 0;
 
 function frame(ts) {
   requestAnimationFrame(frame);
@@ -590,34 +373,19 @@ function frame(ts) {
   level += (target - level) * Math.min(1, dt * (target > level ? 16 : 5));
   beatPulse = Math.max(0, beatPulse - dt * 3);
 
-  // live level readout — makes a silent capture immediately diagnosable
-  if (listening) {
-    silentFor = level < 0.005 ? silentFor + dt : 0;
-    if (ts - lastStatusTs > 500) {
-      lastStatusTs = ts;
-      listenStatus.textContent = silentFor > 3
-        ? "Listening, but it's silent — " + (mode === "mic"
-            ? "turn the volume up, or switch to Tab audio (a mic can't hear headphones)"
-            : "tick “share tab audio” in the picker, or press play")
-        : "Listening (" + mode + ") · level " + Math.round(level * 100) + "%";
-    }
-  }
-
   draw(ts, dt);
 }
 requestAnimationFrame(frame);
 
-/* ---------- gps speed & acceleration ---------- */
+/* ---------- gps speed & acceleration (auto-start) ---------- */
 
 /* watchPosition feeds fixes; speed comes straight from the device when it
    has one, otherwise it's derived from the distance between fixes. The
    acceleration is the smoothed derivative of that speed. */
 
-let watchId = null;
 let prev = null;       // { lat, lon, t, speed } of the previous fix
 let speedSm = null;    // EMA of speed (m/s)
 let accelSm = null;    // EMA of acceleration (m/s²)
-let fixes = 0;
 
 function haversine(lat1, lon1, lat2, lon2) {
   const rad = Math.PI / 180;
@@ -628,51 +396,26 @@ function haversine(lat1, lon1, lat2, lon2) {
   return 2 * 6371000 * Math.asin(Math.sqrt(s));
 }
 
-gpsBtn.addEventListener("click", () => {
-  if (watchId !== null) {
-    navigator.geolocation.clearWatch(watchId);
-    watchId = null;
-    gpsBtn.textContent = "Start GPS";
-    gpsStatus.textContent = "GPS off — live speed & acceleration from location";
-    speedEl.textContent = "–";
-    accelEl.textContent = "–";
-    return;
+function startGps() {
+  if (!window.isSecureContext || !("geolocation" in navigator)) {
+    return; // no GPS path — readouts just stay at –
   }
-  if (!window.isSecureContext) {
-    gpsStatus.textContent = "Blocked: http:// pages get no GPS — use localhost or https";
-    return;
-  }
-  if (!("geolocation" in navigator)) {
-    gpsStatus.textContent = "Geolocation is not supported here";
-    return;
-  }
-  prev = null;
-  speedSm = null;
-  accelSm = null;
-  fixes = 0;
-  gpsBtn.textContent = "Stop GPS";
-  gpsStatus.textContent = "Waiting for a fix…";
-  watchId = navigator.geolocation.watchPosition(onFix, onGpsErr, {
+  navigator.geolocation.watchPosition(onFix, () => {}, {
     enableHighAccuracy: true,
     maximumAge: 0,
     timeout: 20000,
   });
-});
+}
 
 function onFix(p) {
   const c = p.coords;
   const t = p.timestamp;
-  fixes++;
 
   let speed = c.speed != null && c.speed >= 0 ? c.speed : null; // m/s
-  let source = "gps";
   if (speed === null && prev && t > prev.t) {
     const d = haversine(prev.lat, prev.lon, c.latitude, c.longitude);
     const dt = (t - prev.t) / 1000;
-    if (dt > 0) {
-      speed = d / dt;
-      source = "derived";
-    }
+    if (dt > 0) speed = d / dt;
   }
 
   if (speed !== null) {
@@ -687,89 +430,14 @@ function onFix(p) {
   }
 
   prev = { lat: c.latitude, lon: c.longitude, t, speed };
-  gpsStatus.textContent = `±${Math.round(c.accuracy)} m accuracy · ${fixes} fixes · speed ${source}`;
 }
 
-function onGpsErr(err) {
-  const msgs = {
-    1: "Permission denied — allow location access",
-    2: "Position unavailable — no signal yet",
-    3: "Timed out waiting for a fix",
-  };
-  gpsStatus.textContent = msgs[err.code] || err.message;
-}
+/* ---------- auto-start everything ---------- */
 
-/* ---------- install pill ---------- */
-
-const pill = document.getElementById("installPill");
-const installBtn = document.getElementById("installAccept");
-let deferredPrompt = null;
-let pillTimer = 0;
-let pillDismissed = false;
-
-function showPill() {
-  if (pillDismissed) return;
-  clearTimeout(pillTimer);
-  pill.hidden = false;
-  requestAnimationFrame(() => pill.classList.add("show"));
-}
-
-function hidePill() {
-  pill.classList.remove("show");
-  pillTimer = setTimeout(() => {
-    pill.hidden = true;
-  }, 400);
-}
-
-function showPillSoon() {
-  clearTimeout(pillTimer);
-  pillTimer = setTimeout(showPill, 1200);
-}
-
-window.addEventListener("beforeinstallprompt", (e) => {
-  e.preventDefault(); // keep Chrome's own infobar out of sight
-  deferredPrompt = e;
-  installBtn.textContent = "Install";
-  showPillSoon();
+window.addEventListener("load", () => {
+  startMic();
+  startGps();
 });
-
-window.addEventListener("appinstalled", () => {
-  deferredPrompt = null;
-  pillDismissed = true;
-  hidePill();
-});
-
-window.matchMedia("(display-mode: standalone)").addEventListener("change", (e) => {
-  if (e.matches) {
-    pillDismissed = true;
-    hidePill();
-  }
-});
-
-installBtn.addEventListener("click", async () => {
-  if (deferredPrompt) {
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    deferredPrompt = null;
-    if (outcome === "accepted") {
-      pillDismissed = true;
-      hidePill();
-    }
-    // Declined: the pill stays put — the user may change their mind.
-  } else {
-    // iOS Safari has no install API; spell out how, and keep it spelled out.
-    installBtn.textContent = "Share → Add to Home Screen";
-  }
-});
-
-/* iOS never fires beforeinstallprompt, so surface the pill there ourselves. */
-const isIOS =
-  /iP(hone|ad|od)/.test(navigator.userAgent) ||
-  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-if (isIOS && !("onbeforeinstallprompt" in window)) {
-  installBtn.textContent = "Add to Home Screen";
-  showPillSoon();
-}
 
 /* ---------- pwa ---------- */
 
