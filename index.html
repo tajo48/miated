@@ -783,79 +783,46 @@ function drawRouteBox(dt) {
   rctx.shadowBlur = 0;
   rctx.restore();
 
-  // compass rose: ticks and letters ride the perimeter of the rounded square
-  // (arc-length parameterized, so motion stays smooth through the corners),
-  // rotated so your heading always sits at the top
+  // compass rose: letters ride the rounded-square border at fixed bearings,
+  // so the rose is a pure rotation — your heading sits at the top and the
+  // letters glide around the corners without ever jumping
   const side = half - rad;
-  const cArc = (Math.PI / 2) * rad;
-  const P = 8 * side + 4 * cArc;
-  const headArc = (roseHeading / 360) * P;
 
-  function rosePoint(s) {
-    s = ((s % P) + P) % P;
-    // [x, y, outward-normal-x, outward-normal-y, cornerDepth]
-    // cornerDepth: 0 on straight edges, 0→1→0 across a corner arc
-    if (s < side) return [s - side, -half, 0, -1, 0];
-    s -= side;
-    if (s < cArc) {
-      const a = -Math.PI / 2 + s / rad;
-      return [half - rad + rad * Math.cos(a), -half + rad + rad * Math.sin(a), Math.cos(a), Math.sin(a), Math.sin((s / cArc) * Math.PI)];
+  // bearing (deg, 0 = up, clockwise) -> the point where the ray from the
+  // center at that angle meets the border, plus its outward normal:
+  // [x, y, normal-x, normal-y], relative to the dial center
+  function rosePoint(deg) {
+    const a = ((deg - 90) * Math.PI) / 180;
+    const ux = Math.cos(a), uy = Math.sin(a);
+    const dist = half / Math.max(Math.abs(ux), Math.abs(uy));
+    let x = dist * ux, y = dist * uy, nx = 0, ny = 0;
+    if (Math.abs(x) > side && Math.abs(y) > side) {
+      // ray exits through a corner: project onto that corner's arc
+      const qx = Math.sign(x) * side, qy = Math.sign(y) * side;
+      const dx = x - qx, dy = y - qy, dl = Math.hypot(dx, dy);
+      x = qx + (dx / dl) * rad;
+      y = qy + (dy / dl) * rad;
+      nx = dx / dl;
+      ny = dy / dl;
+    } else if (Math.abs(ux) > Math.abs(uy)) {
+      nx = Math.sign(ux);
+    } else {
+      ny = Math.sign(uy);
     }
-    s -= cArc;
-    if (s < 2 * side) return [half, -side + s, 1, 0, 0];
-    s -= 2 * side;
-    if (s < cArc) {
-      const a = s / rad;
-      return [half - rad + rad * Math.cos(a), side - rad + rad * Math.sin(a), Math.cos(a), Math.sin(a), Math.sin((s / cArc) * Math.PI)];
-    }
-    s -= cArc;
-    if (s < 2 * side) return [side - s, half, 0, 1, 0];
-    s -= 2 * side;
-    if (s < cArc) {
-      const a = Math.PI / 2 + s / rad;
-      return [-half + rad + rad * Math.cos(a), side - rad + rad * Math.sin(a), Math.cos(a), Math.sin(a), Math.sin((s / cArc) * Math.PI)];
-    }
-    s -= cArc;
-    if (s < 2 * side) return [-half, side - s, -1, 0, 0];
-    s -= 2 * side;
-    if (s < cArc) {
-      const a = Math.PI + s / rad;
-      return [-half + rad + rad * Math.cos(a), -side + rad + rad * Math.sin(a), Math.cos(a), Math.sin(a), Math.sin((s / cArc) * Math.PI)];
-    }
-    s -= cArc;
-    return [-side + s, -half, 0, -1, 0];
+    return [x, y, nx, ny];
   }
 
-  // ticks every 10°, majors every 90° — each tick starts AT the border so
-  // the lines touch it
-  for (let i = 0; i < 36; i++) {
-    const [x, y, nx, ny] = rosePoint((i / 36) * P - headArc);
-    const major = i % 9 === 0;
-    const tickLen = size * (major ? 0.05 : 0.022);
-    rctx.beginPath();
-    rctx.moveTo(cx + x, cy + y);
-    rctx.lineTo(cx + x - nx * tickLen, cy + y - ny * tickLen);
-    rctx.strokeStyle = major ? "#8caaee" : "#626880";
-    rctx.lineWidth = major ? 2 : 1;
-    rctx.stroke();
-  }
-
-  // cardinal letters ride the perimeter just inside the edge, fading out
-  // around the corners so they only ever sit on the straight sides
+  // cardinal letters ride the border just inside the edge — N red, E/S/W muted
   rctx.textAlign = "center";
   rctx.textBaseline = "middle";
   rctx.font = Math.round(size * 0.055) + "px " + BEBAS;
-  const cardinals = [["N", 0, "#e78284"], ["E", 0.25, "#a5adce"], ["S", 0.5, "#a5adce"], ["W", 0.75, "#a5adce"]];
-  for (const [t, frac, col] of cardinals) {
-    const [x, y, nx, ny, corner] = rosePoint(frac * P - headArc);
-    const inset = size * 0.12; // clear of the ticks: letters live inside them
-    const alpha = 1 - corner;
-    if (alpha <= 0.05) continue;
-    rctx.globalAlpha = alpha;
+  const inset = size * 0.12;
+  const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
+  for (const [ch, deg, col] of cardinals) {
+    const [x, y, nx, ny] = rosePoint(deg - roseHeading);
     rctx.fillStyle = col;
-    rctx.fillText(t, cx + x - nx * inset, cy + y - ny * inset);
+    rctx.fillText(ch, cx + x - nx * inset, cy + y - ny * inset);
   }
-  rctx.globalAlpha = 1;
 }
 
 /* ---------- allow buttons ---------- */
