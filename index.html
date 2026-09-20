@@ -135,6 +135,33 @@
   button.allow[hidden] { display: none; }
 
   .btnRow { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; width: 100%; }
+
+  /* ---------- route box (compass + backtrack) ---------- */
+  #route {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    display: block;
+    border-radius: 6px;
+    background: #292c3c; /* mantle: darker than the card, delineates the dial */
+  }
+  button.mini {
+    font-family: var(--bebas);
+    font-size: 15px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: transparent;
+    color: #8caaee;
+    border: 2px solid #51576d;
+    border-radius: 6px;
+    padding: 6px 14px 4px;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  button.mini:active { transform: scale(0.96); }
+  .spacer { flex: 1; }
+  #routeCard[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -155,6 +182,17 @@
     <div class="stat"><span class="label">Speed</span><span class="value" id="speed">–</span><span class="unit">km/h</span></div>
     <div class="stat"><span class="label">Accel</span><span class="value" id="accel">–</span><span class="unit">m/s²</span></div>
   </div>
+
+  <div class="card" id="routeCard" hidden>
+    <canvas id="route"></canvas>
+    <div class="row">
+      <button id="pinBtn" class="mini">Pin</button>
+      <button id="pauseBtn" class="mini">Pause</button>
+      <span class="spacer"></span>
+      <button id="zoomOut" class="mini">−</button>
+      <button id="zoomIn" class="mini">+</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -168,6 +206,13 @@ const speedEl = document.getElementById("speed");
 const accelEl = document.getElementById("accel");
 const allowMicBtn = document.getElementById("allowMicBtn");
 const allowGpsBtn = document.getElementById("allowGpsBtn");
+const routeCard = document.getElementById("routeCard");
+const routeCanvas = document.getElementById("route");
+const rctx = routeCanvas.getContext("2d");
+const pinBtn = document.getElementById("pinBtn");
+const pauseBtn = document.getElementById("pauseBtn");
+const zoomOutBtn = document.getElementById("zoomOut");
+const zoomInBtn = document.getElementById("zoomIn");
 
 /* ---------- microphone (auto-start) ---------- */
 
@@ -431,6 +476,7 @@ function frame(ts) {
   beatPulse = Math.max(0, beatPulse - dt * 3);
 
   draw(ts, dt);
+  if (routeShown && !routeCard.hidden) drawRouteBox(dt);
 }
 requestAnimationFrame(frame);
 
@@ -443,6 +489,7 @@ requestAnimationFrame(frame);
 let prev = null;       // { lat, lon, t, speed } of the previous fix
 let speedSm = null;    // EMA of speed (m/s)
 let accelSm = null;    // EMA of acceleration (m/s²)
+let cur = null;        // latest fix { lat, lon }
 
 let watchId = null;
 let gpsTries = 0;
@@ -516,6 +563,28 @@ function onFix(p) {
   const c = p.coords;
   const t = p.timestamp;
 
+  // reveal the route box on the first fix
+  if (!routeShown) {
+    routeShown = true;
+    routeCard.hidden = false;
+  }
+
+  // record the traveled route (decimate if it grows huge)
+  if (recording) {
+    const last = route[route.length - 1];
+    if (!last || haversine(last.lat, last.lon, c.latitude, c.longitude) > 2) {
+      route.push({ lat: c.latitude, lon: c.longitude });
+      if (route.length > 1500) route = route.filter((_, i) => i % 2 === 0);
+    }
+  }
+
+  // course-over-ground as a heading fallback while moving (no compass event)
+  if (!compassSeen && c.heading != null && !isNaN(c.heading) && speedSm !== null && speedSm > 1) {
+    heading = c.heading;
+  }
+
+  cur = { lat: c.latitude, lon: c.longitude };
+
   let speed = c.speed != null && c.speed >= 0 ? c.speed : null; // m/s
   if (speed === null && prev && t > prev.t) {
     const d = haversine(prev.lat, prev.lon, c.latitude, c.longitude);
@@ -535,6 +604,193 @@ function onFix(p) {
   }
 
   prev = { lat: c.latitude, lon: c.longitude, t, speed };
+}
+
+/* ---------- route box: compass + backtrack ---------- */
+
+/* North-up radar: the traveled route is drawn as dots around your position,
+   an arrow shows your heading, and the compass rose rotates so the heading
+   sits at the top. Zoom fits the route automatically; +/− scale manually.
+   "Pin" tags the current spot, "Pause" stops recording. */
+
+let route = [];
+let waypoints = [];
+let recording = true;
+let routeShown = false;
+let userZoom = 1;
+let viewScale = null; // smoothed px-per-meter
+let heading = 0;      // degrees clockwise from north
+let headingSm = null;
+let compassSeen = false;
+
+const BEBAS = "'Bebas Neue', Impact, Haettenschweiler, 'Arial Narrow', sans-serif";
+
+function onOrientation(e) {
+  let h = null;
+  if (e.type === "deviceorientationabsolute" && e.alpha != null) {
+    h = 360 - e.alpha; // absolute alpha runs counter-clockwise
+  } else if (typeof e.webkitCompassHeading === "number") {
+    h = e.webkitCompassHeading;
+  } else if (e.alpha != null && e.absolute) {
+    h = 360 - e.alpha;
+  }
+  if (h != null && !isNaN(h)) {
+    heading = ((h % 360) + 360) % 360;
+    compassSeen = true;
+  }
+}
+window.addEventListener("deviceorientationabsolute", onOrientation, true);
+window.addEventListener("deviceorientation", onOrientation, true);
+
+pinBtn.addEventListener("click", () => {
+  if (!cur) return;
+  waypoints.push({ lat: cur.lat, lon: cur.lon });
+  if (waypoints.length > 24) waypoints.shift();
+  if (navigator.vibrate) navigator.vibrate(30);
+});
+
+pauseBtn.addEventListener("click", () => {
+  recording = !recording;
+  pauseBtn.textContent = recording ? "Pause" : "Resume";
+});
+
+zoomInBtn.addEventListener("click", () => { userZoom = Math.min(30, userZoom * 1.7); });
+zoomOutBtn.addEventListener("click", () => { userZoom = Math.max(0.2, userZoom / 1.7); });
+
+function drawRouteBox(dt) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = routeCanvas.clientWidth;
+  const h = routeCanvas.clientHeight;
+  if (!w || !h) return;
+  if (routeCanvas.width !== Math.round(w * dpr) || routeCanvas.height !== Math.round(h * dpr)) {
+    routeCanvas.width = Math.round(w * dpr);
+    routeCanvas.height = Math.round(h * dpr);
+  }
+  rctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  rctx.clearRect(0, 0, w, h);
+
+  const cx = w / 2;
+  const cy = h / 2;
+  const size = Math.min(w, h);
+  const dialR = size * 0.46;
+
+  // dial background
+  rctx.beginPath();
+  rctx.arc(cx, cy, dialR, 0, Math.PI * 2);
+  rctx.fillStyle = "#292c3c";
+  rctx.fill();
+  rctx.lineWidth = 2;
+  rctx.strokeStyle = "#51576d";
+  rctx.stroke();
+
+  if (!cur) return;
+
+  // local flat projection: meters east / north of the current position
+  const mLat = 111320;
+  const mLon = 111320 * Math.cos((cur.lat * Math.PI) / 180);
+  const east = (p) => (p.lon - cur.lon) * mLon;
+  const north = (p) => (cur.lat - p.lat) * mLat;
+
+  // auto zoom: fit the whole route (and pins) around the current position
+  let maxD = 25;
+  for (const p of route) maxD = Math.max(maxD, Math.hypot(east(p), north(p)));
+  for (const p of waypoints) maxD = Math.max(maxD, Math.hypot(east(p), north(p)));
+  const target = ((dialR * 0.72) / maxD) * userZoom;
+  viewScale = viewScale === null ? target : viewScale + (target - viewScale) * Math.min(1, dt * 3);
+  const s = viewScale;
+
+  // heading: smooth across the wrap-around at 0/360
+  if (headingSm === null) headingSm = heading;
+  let dh = ((heading - headingSm + 540) % 360) - 180;
+  headingSm = (headingSm + dh * Math.min(1, dt * 6) + 360) % 360;
+
+  // the route: dots, older ones fading toward the start
+  rctx.save();
+  rctx.beginPath();
+  rctx.arc(cx, cy, dialR - 1, 0, Math.PI * 2);
+  rctx.clip();
+  const n = route.length;
+  const dotR = Math.max(1.4, size * 0.009);
+  for (let i = 0; i < n; i++) {
+    const x = cx + east(route[i]) * s;
+    const y = cy - north(route[i]) * s;
+    const age = n > 1 ? i / (n - 1) : 1;
+    rctx.beginPath();
+    rctx.arc(x, y, dotR, 0, Math.PI * 2);
+    rctx.fillStyle = `rgba(140, 170, 238, ${0.3 + age * 0.7})`;
+    rctx.fill();
+  }
+
+  // waypoints: peach diamonds
+  for (let i = 0; i < waypoints.length; i++) {
+    const x = cx + east(waypoints[i]) * s;
+    const y = cy - north(waypoints[i]) * s;
+    const wr = Math.max(3, size * 0.014);
+    rctx.beginPath();
+    rctx.moveTo(x, y - wr);
+    rctx.lineTo(x + wr, y);
+    rctx.lineTo(x, y + wr);
+    rctx.lineTo(x - wr, y);
+    rctx.closePath();
+    rctx.fillStyle = "#ef9f76";
+    rctx.fill();
+  }
+
+  // current position: green dot with a soft glow
+  rctx.beginPath();
+  rctx.arc(cx, cy, Math.max(3, size * 0.016), 0, Math.PI * 2);
+  rctx.fillStyle = "#a6d189";
+  rctx.shadowColor = "#a6d189";
+  rctx.shadowBlur = 10;
+  rctx.fill();
+  rctx.shadowBlur = 0;
+  rctx.restore();
+
+  // compass rose: ticks rotate so your heading sits at the top
+  for (let i = 0; i < 36; i++) {
+    const deg = i * 10;
+    const a = ((deg - headingSm) * Math.PI) / 180 - Math.PI / 2;
+    const major = deg % 90 === 0;
+    const r1 = dialR - size * (major ? 0.05 : 0.022);
+    const r2 = dialR - 3;
+    rctx.beginPath();
+    rctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+    rctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+    rctx.strokeStyle = major ? "#8caaee" : "#626880";
+    rctx.lineWidth = major ? 2 : 1;
+    rctx.stroke();
+  }
+
+  // cardinal letters
+  rctx.textAlign = "center";
+  rctx.textBaseline = "middle";
+  rctx.font = Math.round(size * 0.055) + "px " + BEBAS;
+  const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
+  for (const [t, deg, col] of cardinals) {
+    const a = ((deg - headingSm) * Math.PI) / 180 - Math.PI / 2;
+    const r = dialR - size * 0.1;
+    rctx.fillStyle = col;
+    rctx.fillText(t, cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+  }
+
+  // heading arrow at the center dot
+  const a = (headingSm * Math.PI) / 180;
+  const L = size * 0.15;
+  const W2 = size * 0.045;
+  rctx.save();
+  rctx.translate(cx, cy);
+  rctx.rotate(a);
+  rctx.beginPath();
+  rctx.moveTo(0, -L);
+  rctx.lineTo(W2, L * 0.35);
+  rctx.lineTo(0, L * 0.08);
+  rctx.lineTo(-W2, L * 0.35);
+  rctx.closePath();
+  rctx.fillStyle = "#f2d5cf";
+  rctx.shadowColor = "#f2d5cf";
+  rctx.shadowBlur = 8 + level * 10; // the music glows through, why not
+  rctx.fill();
+  rctx.restore();
 }
 
 /* ---------- allow buttons ---------- */
