@@ -265,10 +265,11 @@ function rebuildGrid() {
   const w = window.innerWidth;
   const h = window.innerHeight;
   const unit = Math.min(w, h);
-  // Really dense: 6–12 px cells, relaxed only when the viewport is so large
-  // that the dot count would tank the frame rate.
-  let spacing = Math.max(6, Math.min(12, unit / 64));
-  const maxDots = 16000;
+  // Dense, but half the previous count: 9–17 px cells (count ∝ 1/spacing²),
+  // relaxed only when the viewport is so large that the dot count would tank
+  // the frame rate.
+  let spacing = Math.max(9, Math.min(17, unit / 45));
+  const maxDots = 8000;
   if ((w / spacing) * (h / spacing) > maxDots) {
     spacing = Math.sqrt((w * h) / maxDots);
   }
@@ -312,7 +313,10 @@ function draw(ts, dt) {
     if (waves[i].e <= 0 || waves[i].r > 1.3) waves.splice(i, 1);
   }
 
-  const baseR = gridSpacing * 0.5; // radius = half a cell → neighbors just touch
+  // Dots start small and grow with the music up to exactly touching their
+  // neighbors — never past it, so they never blend into each other.
+  const baseR = gridSpacing * 0.22;
+  const maxR = gridSpacing * 0.5;
 
   /* Thousands of dots per frame: batch them into a handful of Path2D
      buckets (quantized hue × alpha) and issue one fill per bucket — per-dot
@@ -343,7 +347,8 @@ function draw(ts, dt) {
     const aQ = Math.round(a * 12) / 12;
     const hue = (((d.hue + hueDrift + hueDrift2 * 0.5) % 360) + 360) % 360;
     const hueQ = (Math.round(hue / 15) * 15) % 360;
-    const r = Math.min(gridSpacing * 1.05, baseR * (1 + v * 1.1 + waveBoost * 0.8));
+    const drive = Math.min(1, v * 1.4 + waveBoost * 0.9);
+    const r = baseR + (maxR - baseR) * drive;
 
     const key = (hueQ / 15) * 13 + Math.round(aQ * 12);
     let bucket = buckets.get(key);
@@ -432,11 +437,33 @@ function onFix(p) {
   prev = { lat: c.latitude, lon: c.longitude, t, speed };
 }
 
+/* ---------- keep the screen on ---------- */
+
+/* Screen Wake Lock: the display stays on while the app is open. The lock is
+   released by the OS whenever the page hides, so re-request on visibility. */
+let wakeLock = null;
+
+function requestWakeLock() {
+  if (!("wakeLock" in navigator)) return; // not supported: silently skip
+  navigator.wakeLock.request("screen").then((lock) => {
+    wakeLock = lock;
+    lock.addEventListener("release", () => { wakeLock = null; });
+  }).catch(() => {}); // denied — nothing to do
+}
+
 /* ---------- auto-start everything ---------- */
 
 window.addEventListener("load", () => {
   startMic();
   startGps();
+  requestWakeLock();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    wakeAudio();
+    requestWakeLock(); // re-acquire after the OS dropped it
+  }
 });
 
 /* ---------- pwa ---------- */
