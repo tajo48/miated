@@ -220,6 +220,43 @@
   #cpRemoveBtn { color: #e78284; }
   #cpRemoveBtn:disabled { opacity: 0.35; }
   #cpCancelBtn { color: #a5adce; background: #232630; }
+
+  /* ---------- landscape / car-station layout ---------- */
+
+  /* Wide, short screens (cheap head units, phone landscape, ~2:1 and wider):
+     brand + allow buttons + stats go in a left column, the route dial docks
+     on the right at the full height of the screen. Driven by orientation +
+     height only, so any resolution from 480p to 1080p gets the same flow. */
+  @media (orientation: landscape) and (max-height: 520px) {
+    body {
+      padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+      gap: 10px;
+    }
+    .wrap {
+      width: min(97vw, 1400px);
+      flex: 1 1 auto;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      grid-template-areas:
+        "brand route"
+        "btns  route"
+        "stats route";
+      column-gap: clamp(16px, 3vw, 40px);
+      row-gap: 10px;
+      align-content: center;
+    }
+    .topbar { grid-area: brand; align-self: end; }
+    .btnRow { grid-area: btns; justify-content: start; }
+    .stats { grid-area: stats; align-self: center; }
+    .stat { padding: 14px 16px 12px; gap: 2px; }
+    .stat .value { font-size: clamp(40px, 16vh, 84px); min-height: 1em; }
+    #routeCard {
+      grid-area: route;
+      align-self: center;
+      margin: 0;
+      width: min(86vh, 460px);
+    }
+  }
 </style>
 </head>
 <body>
