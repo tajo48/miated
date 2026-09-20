@@ -143,6 +143,7 @@
 
   /* ---------- route box (compass + backtrack) ---------- */
   #routeCard {
+    position: relative; /* anchors the checkpoint menu */
     width: min(64vw, 280px);
     margin-top: auto; /* dock at the bottom */
     margin-left: auto;
@@ -161,6 +162,39 @@
     touch-action: none; /* pinch on the dial zooms the route, not the page */
   }
   #routeCard[hidden] { display: none; }
+
+  /* checkpoint menu: opens where you clicked */
+  #cpMenu {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: #292c3c;
+    border: 1px solid #51576d;
+    border-radius: 8px;
+    padding: 6px;
+    z-index: 10;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  }
+  #cpMenu[hidden] { display: none; }
+  #cpMenu button {
+    font-family: var(--bebas);
+    font-size: 16px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: #414559;
+    border: 1px solid #51576d;
+    border-radius: 6px;
+    padding: 8px 14px 5px;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #cpMenu button:active { transform: scale(0.96); }
+  #cpAddBtn { color: #e5c890; }
+  #cpRemoveBtn { color: #e78284; }
+  #cpRemoveBtn:disabled { opacity: 0.35; }
 </style>
 </head>
 <body>
@@ -184,6 +218,10 @@
 
   <div class="card" id="routeCard" hidden>
     <canvas id="route"></canvas>
+    <div id="cpMenu" hidden>
+      <button id="cpAddBtn">+ Checkpoint</button>
+      <button id="cpRemoveBtn">− Checkpoint</button>
+    </div>
   </div>
 </div>
 
@@ -872,14 +910,14 @@ function releasePinch(e) {
 routeCanvas.addEventListener("pointerup", releasePinch);
 routeCanvas.addEventListener("pointercancel", releasePinch);
 
-/* ---------- card gestures: checkpoints, share, delete ---------- */
+/* ---------- card gestures: checkpoint menu, share, delete ---------- */
 
-/* One click drops a checkpoint at the current position, two quick clicks
-   share the route view as a PNG, three clicks remove the newest checkpoint,
-   and holding a finger down for ~600 ms asks to delete every checkpoint and
-   dot. Because 1/2/3 clicks are all valid, the action fires ~400 ms after
-   the last click of a burst (taps up to 600 ms apart count as one burst).
-   Taps that are part of a pinch never trigger anything. */
+/* One click opens a small menu at the tap point with add / remove checkpoint
+   options, two quick clicks share the route view as a PNG, and holding a
+   finger down for ~1 s (border fills red as progress) asks to delete every
+   checkpoint and dot. Because 1/2 clicks are both valid, the action fires
+   ~500 ms after the last click of a burst (taps up to 600 ms apart count as
+   one burst). Taps that are part of a pinch never trigger anything. */
 const canShareFiles = (() => {
   if (typeof navigator.share !== "function" || typeof navigator.canShare !== "function" || typeof File === "undefined") return false;
   try {
@@ -898,12 +936,30 @@ const HOLD_MS = 1000;  // long-press duration
 let tapTimer = null;   // pending action after a burst of 1/2/3 clicks
 let flashColor = "#a6d189"; // border flash colour of the last action
 
-/* Catppuccin action colours: green = share (original), yellow = checkpoint
-   added, red = checkpoint removed, blue = everything cleared. */
+/* Catppuccin action colours: green = share, yellow = checkpoint added,
+   red = checkpoint removed / hold progress, blue = everything cleared. */
 const FLASH_SHARE = "#a6d189";
 const FLASH_ADD = "#e5c890";
 const FLASH_REMOVE = "#e78284";
 const FLASH_CLEAR = "#8caaee";
+
+const cpMenu = document.getElementById("cpMenu");
+const cpAddBtn = document.getElementById("cpAddBtn");
+const cpRemoveBtn = document.getElementById("cpRemoveBtn");
+
+function hideCpMenu() { cpMenu.hidden = true; }
+
+function showCpMenu(e) {
+  const r = routeCanvas.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  cpMenu.style.left = Math.min(Math.max(8, x - 50), r.width - 8 - 120) + "px";
+  cpMenu.style.top = Math.min(Math.max(8, y - 20), r.height - 8 - 96) + "px";
+  cpRemoveBtn.disabled = !route.some((p) => p.cp);
+  cpMenu.hidden = false;
+}
+
+cpAddBtn.addEventListener("click", () => { hideCpMenu(); addCheckpoint(); });
+cpRemoveBtn.addEventListener("click", () => { hideCpMenu(); removeCheckpoint(); });
 
 function flashBorder(color) {
   flashColor = color;
@@ -947,6 +1003,7 @@ function clearAllDots() {
 }
 
 routeCanvas.addEventListener("pointerdown", (e) => {
+  hideCpMenu();
   // a second finger joining means a pinch — nothing else counts
   if (pinchPointers.size >= 2) { tapStart = null; cancelHold(); clearTapTimer(); return; }
   tapStart = { id: e.pointerId, t: performance.now(), x: e.clientX, y: e.clientY };
@@ -994,9 +1051,8 @@ routeCanvas.addEventListener("pointerup", (e) => {
   tapTimer = setTimeout(() => {
     tapTimer = null;
     tapTimes = [];
-    if (n === 1) addCheckpoint();
-    else if (n === 2) shareRoute();
-    else if (n >= 3) removeCheckpoint();
+    if (n === 1) showCpMenu(e);
+    else if (n >= 2) shareRoute();
   }, 500);
 });
 routeCanvas.addEventListener("pointercancel", () => {
@@ -1308,13 +1364,13 @@ function drawRouteBox(dt) {
     rctx.globalAlpha = 1;
   }
 
-  // long-press progress: the border fills toward blue over HOLD_MS
+  // long-press progress: the border fills toward red over HOLD_MS
   if (holdStart !== null) {
     const p = Math.min(1, (performance.now() - holdStart) / HOLD_MS);
     rctx.beginPath();
     roundedRectPath(rctx, cx, cy, dialHalf, dialRad);
     rctx.lineWidth = 2 + p * 4;
-    rctx.strokeStyle = `rgba(138, 173, 244, ${0.15 + p * 0.85})`;
+    rctx.strokeStyle = `rgba(231, 130, 132, ${0.15 + p * 0.85})`;
     rctx.stroke();
   }
 
