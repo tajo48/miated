@@ -1138,7 +1138,7 @@ async function shareRoute() {
    used as-is; while standing still, the raw compass heading is used as-is. */
 function updateHeading(dt) {
   const moving = (speedSm || 0) > 1.2 && lastCourse !== null;
-  const target = moving ? lastCourse : magHeading;
+  let target = moving ? lastCourse : magHeading;
 
   if (target !== null) {
     target = ((target % 360) + 360) % 360;
