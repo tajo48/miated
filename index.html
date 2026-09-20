@@ -668,11 +668,32 @@ function drawRouteBox(dt) {
   const cx = w / 2;
   const cy = h / 2;
   const size = Math.min(w, h);
-  const dialR = size * 0.46;
+  const dialHalf = size * 0.46; // half-side of the rounded-square dial
+  const dialRad = dialHalf * 0.22; // corner radius, echoing the box
 
-  // dial background
+  // rounded-square edge: distance from center to the dial edge along a
+  // direction (|ux|,|uy|) — support function of a rounded rect
+  const half = dialHalf - 1.5;
+  const rad = Math.max(6, dialRad);
+  const c0 = half - rad;
+  function edgeR(ux, uy) {
+    const hi = Math.max(ux, uy);
+    const lo = Math.min(ux, uy);
+    if (lo / hi <= c0 / half) return half / hi; // straight edge region
+    return (rad + c0 * (ux + uy)) / Math.hypot(ux, uy); // corner arc region
+  }
+  function roundedRectPath(c, halfSide, r) {
+    c.moveTo(cx - halfSide + r, cy - halfSide);
+    c.arcTo(cx + halfSide, cy - halfSide, cx + halfSide, cy + halfSide, r);
+    c.arcTo(cx + halfSide, cy + halfSide, cx - halfSide, cy + halfSide, r);
+    c.arcTo(cx - halfSide, cy + halfSide, cx - halfSide, cy - halfSide, r);
+    c.arcTo(cx - halfSide, cy - halfSide, cx + halfSide, cy - halfSide, r);
+    c.closePath();
+  }
+
+  // dial background: rounded square, like the box
   rctx.beginPath();
-  rctx.arc(cx, cy, dialR, 0, Math.PI * 2);
+  roundedRectPath(rctx, dialHalf, dialRad);
   rctx.fillStyle = "#292c3c";
   rctx.fill();
   rctx.lineWidth = 2;
@@ -704,7 +725,7 @@ function drawRouteBox(dt) {
   // the route: dots, older ones fading toward the start
   rctx.save();
   rctx.beginPath();
-  rctx.arc(cx, cy, dialR - 1, 0, Math.PI * 2);
+  roundedRectPath(rctx, dialHalf - 3, Math.max(4, dialRad - 2));
   rctx.clip();
   const n = route.length;
   const dotR = Math.max(1.4, size * 0.009);
@@ -728,31 +749,36 @@ function drawRouteBox(dt) {
   rctx.shadowBlur = 0;
   rctx.restore();
 
-  // compass rose: ticks rotate so your heading sits at the top
+  // compass rose: ticks ride the rounded-square edge, heading at the top
   for (let i = 0; i < 36; i++) {
     const deg = i * 10;
-    const a = ((deg - headingSm) * Math.PI) / 180 - Math.PI / 2;
+    const phi = ((deg - headingSm) * Math.PI) / 180 - Math.PI / 2;
     const major = deg % 90 === 0;
-    const r1 = dialR - size * (major ? 0.05 : 0.022);
-    const r2 = dialR - 3;
+    const tEdge = edgeR(Math.abs(Math.cos(phi)), Math.abs(Math.sin(phi)));
+    const tickLen = size * (major ? 0.05 : 0.022);
+    const x1 = cx + Math.cos(phi) * (tEdge - tickLen);
+    const y1 = cy + Math.sin(phi) * (tEdge - tickLen);
+    const x2 = cx + Math.cos(phi) * (tEdge - 2);
+    const y2 = cy + Math.sin(phi) * (tEdge - 2);
     rctx.beginPath();
-    rctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
-    rctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+    rctx.moveTo(x1, y1);
+    rctx.lineTo(x2, y2);
     rctx.strokeStyle = major ? "#8caaee" : "#626880";
     rctx.lineWidth = major ? 2 : 1;
     rctx.stroke();
   }
 
-  // cardinal letters
+  // cardinal letters: N/E/S/W on the edge midpoints of their sides
   rctx.textAlign = "center";
   rctx.textBaseline = "middle";
   rctx.font = Math.round(size * 0.055) + "px " + BEBAS;
   const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
   for (const [t, deg, col] of cardinals) {
-    const a = ((deg - headingSm) * Math.PI) / 180 - Math.PI / 2;
-    const r = dialR - size * 0.1;
+    const phi = ((deg - headingSm) * Math.PI) / 180 - Math.PI / 2;
+    const tEdge = edgeR(Math.abs(Math.cos(phi)), Math.abs(Math.sin(phi)));
+    const r = tEdge - size * 0.06;
     rctx.fillStyle = col;
-    rctx.fillText(t, cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    rctx.fillText(t, cx + Math.cos(phi) * r, cy + Math.sin(phi) * r);
   }
 }
 
