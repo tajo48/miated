@@ -786,6 +786,8 @@ function drawRouteBox(dt) {
   const markerInset = size * 0.16; // dot centre depth from the border
   const majorTick = size * 0.04;   // major tick length, welded to the dot
   const minorTick = size * 0.022;  // minor tick length
+  const clearTick = markerInset - ringR; // full big-tick span: the gap the
+  // circle's edge must keep from the border (unchanged by the shorter tick)
 
   // bearing -> [x, y, outward-normal-x, outward-normal-y] on the border
   function rosePoint(deg) {
@@ -811,15 +813,15 @@ function drawRouteBox(dt) {
 
   // cardinal markers: letter in a hollow dot with its major tick welded to
   // it — same bearing, same normal, one rigid body. The circle must keep a
-  // clear gap of at least one major-tick length to the border, measured
-  // from the circle's edge, so near a corner it slides back toward the
-  // dial centre until it clears and parks there while the heading sweeps
+  // clear gap of at least one full big-tick length to the border (measured
+  // from the circle's edge, independent of the shortened drawn tick), so
+  // near a corner it slides back toward the dial centre until it clears and parks there while the heading sweeps
   // past; the tick rides with it and can never overlap the circle.
   function drawCardinals(h) {
     rctx.font = Math.round(size * 0.05) + "px " + BEBAS;
     rctx.textAlign = "center";
     rctx.textBaseline = "middle";
-    const minGap = ringR + majorTick; // circle edge -> border clearance
+    const minGap = ringR + clearTick; // circle edge -> border clearance
     // true distance from a point to the rounded border (square ⊕ corner
     // circle): corner zone is rad minus distance to the corner centre,
     // everywhere else it is the depth below the nearest offset edge
