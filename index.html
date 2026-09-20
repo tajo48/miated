@@ -781,6 +781,7 @@ function drawRouteBox(dt) {
   // true bearings — the rose is a pure rotation of the shape: N/E/S/W sit
   // exactly at 0/90/180/270 and nothing can jump, bunch or fade at corners
   const hdg = heading || 0;
+  const side = half - rad; // straight-edge half-length of the rounded square
 
   // bearing -> [x, y, outward-normal-x, outward-normal-y] on the border
   function rosePoint(deg) {
