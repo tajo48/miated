@@ -783,11 +783,8 @@ function drawRouteBox(dt) {
   const hdg = heading || 0;
   const side = half - rad; // straight-edge half-length of the rounded square
   const ringR = size * 0.045;      // cardinal dot radius
-  const markerInset = size * 0.16; // dot centre depth from the border
-  const majorTick = size * 0.04;   // major tick length, welded to the dot
+  const majorTick = size * 0.04;   // major tick length, anchored at the border
   const minorTick = size * 0.022;  // minor tick length
-  const clearTick = markerInset - ringR; // full big-tick span: the gap the
-  // circle's edge must keep from the border (unchanged by the shorter tick)
 
   // bearing -> [x, y, outward-normal-x, outward-normal-y] on the border
   function rosePoint(deg) {
@@ -811,17 +808,17 @@ function drawRouteBox(dt) {
     return [x, y, nx, ny];
   }
 
-  // cardinal markers: letter in a hollow dot with its major tick welded to
-  // it — same bearing, same normal, one rigid body. The circle must keep a
-  // clear gap of at least one full big-tick length to the border (measured
-  // from the circle's edge, independent of the shortened drawn tick), so
-  // near a corner it slides back toward the dial centre until it clears and parks there while the heading sweeps
-  // past; the tick rides with it and can never overlap the circle.
+  // cardinal markers: letter in a hollow dot riding at the inner end of
+  // its major tick, so the circle touches the tick and its edge keeps
+  // exactly one tick length of clear space to the border. Near a corner
+  // that depth would break the rule, so the dot slides back toward the
+  // dial centre until it clears and parks there while the heading sweeps
+  // past.
   function drawCardinals(h) {
     rctx.font = Math.round(size * 0.05) + "px " + BEBAS;
     rctx.textAlign = "center";
     rctx.textBaseline = "middle";
-    const minGap = ringR + clearTick; // circle edge -> border clearance
+    const minGap = ringR + majorTick; // circle centre depth from the border
     // true distance from a point to the rounded border (square ⊕ corner
     // circle): corner zone is rad minus distance to the corner centre,
     // everywhere else it is the depth below the nearest offset edge
@@ -836,12 +833,13 @@ function drawRouteBox(dt) {
     const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
     for (const [t, deg, col] of cardinals) {
       const [x, y, nx, ny] = rosePoint(deg - h);
-      let px = cx + x - nx * markerInset;
-      let py = cy + y - ny * markerInset;
-      // park: if the circle would come within one major tick of the
-      // border, slide it toward the dial centre until the gap from the
-      // circle's edge is exactly one tick; distance grows monotonically
-      // along that segment, so bisection nails the parking spot
+      let px = cx + x - nx * minGap;
+      let py = cy + y - ny * minGap;
+      // park: on a straight edge the resting spot clears by exactly one
+      // tick; around a corner the border curves away and the distance
+      // drops below one tick, so slide toward the dial centre until the
+      // circle's edge clears by exactly one tick again — distance grows
+      // monotonically along that segment, so bisection nails the spot
       if (borderDist(px, py) < minGap) {
         let lo = 0, hi = 1;
         for (let i = 0; i < 24; i++) {
@@ -852,13 +850,6 @@ function drawRouteBox(dt) {
         px += (cx - px) * hi;
         py += (cy - py) * hi;
       }
-      // major tick: rigidly welded, grows outward from the dot's edge
-      rctx.beginPath();
-      rctx.moveTo(px + nx * ringR, py + ny * ringR);
-      rctx.lineTo(px + nx * (ringR + majorTick), py + ny * (ringR + majorTick));
-      rctx.strokeStyle = "#8caaee";
-      rctx.lineWidth = 2;
-      rctx.stroke();
       rctx.beginPath();
       rctx.arc(px, py, ringR, 0, Math.PI * 2);
       rctx.strokeStyle = col;
@@ -869,16 +860,18 @@ function drawRouteBox(dt) {
     }
   }
 
-  // minor ticks every 10° — each tick starts AT the border so the lines
-  // touch it (majors are drawn with their cardinal dots above)
+  // ticks every 10°, majors every 90° — each tick starts AT the border so
+  // the lines touch it; majors are shorter than they used to be but still
+  // longer and heavier than the minors
   for (let i = 0; i < 36; i++) {
-    if (i % 9 === 0) continue; // majors are welded to the cardinal dots
     const [x, y, nx, ny] = rosePoint(i * 10 - hdg);
+    const major = i % 9 === 0;
+    const tickLen = major ? majorTick : minorTick;
     rctx.beginPath();
     rctx.moveTo(cx + x, cy + y);
-    rctx.lineTo(cx + x - nx * minorTick, cy + y - ny * minorTick);
-    rctx.strokeStyle = "#626880";
-    rctx.lineWidth = 1;
+    rctx.lineTo(cx + x - nx * tickLen, cy + y - ny * tickLen);
+    rctx.strokeStyle = major ? "#8caaee" : "#626880";
+    rctx.lineWidth = major ? 2 : 1;
     rctx.stroke();
   }
 
