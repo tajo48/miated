@@ -163,38 +163,63 @@
   }
   #routeCard[hidden] { display: none; }
 
-  /* checkpoint menu: opens where you clicked */
+  /* checkpoint sheet: full-width bottom sheet — no flimsy floating menu */
+  #cpBackdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(23, 26, 35, 0.6);
+    z-index: 40;
+  }
+  #cpBackdrop[hidden] { display: none; }
   #cpMenu {
-    position: absolute;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    position: fixed;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: min(92vw, 360px);
     background: #292c3c;
     border: 1px solid #51576d;
-    border-radius: 8px;
-    padding: 6px;
-    z-index: 10;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    border-bottom: none;
+    border-radius: 18px 18px 0 0;
+    padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 41;
+    animation: cpSheetUp 0.18s ease-out;
   }
   #cpMenu[hidden] { display: none; }
+  @keyframes cpSheetUp {
+    from { transform: translateX(-50%) translateY(100%); }
+    to { transform: translateX(-50%) translateY(0); }
+  }
+  #cpMenu .cpTitle {
+    font-family: var(--bebas);
+    font-size: 15px;
+    letter-spacing: 2px;
+    color: #a5adce;
+    text-align: center;
+    padding-bottom: 2px;
+  }
   #cpMenu button {
     font-family: var(--bebas);
-    font-size: 16px;
-    letter-spacing: 1px;
+    font-size: 22px;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
-    background: #414559;
-    border: 1px solid #51576d;
-    border-radius: 6px;
-    padding: 8px 14px 5px;
+    border-radius: 10px;
+    padding: 14px 16px 10px;
     cursor: pointer;
     touch-action: manipulation;
     user-select: none;
     -webkit-user-select: none;
+    background: #414559;
+    border: 1px solid #51576d;
+    color: #e5c890;
   }
-  #cpMenu button:active { transform: scale(0.96); }
-  #cpAddBtn { color: #e5c890; }
+  #cpMenu button:active { transform: scale(0.97); }
   #cpRemoveBtn { color: #e78284; }
   #cpRemoveBtn:disabled { opacity: 0.35; }
+  #cpCancelBtn { color: #a5adce; background: #232630; }
 </style>
 </head>
 <body>
@@ -218,10 +243,6 @@
 
   <div class="card" id="routeCard" hidden>
     <canvas id="route"></canvas>
-    <div id="cpMenu" hidden>
-      <button id="cpAddBtn">+ Checkpoint</button>
-      <button id="cpRemoveBtn">− Checkpoint</button>
-    </div>
   </div>
 </div>
 
@@ -944,22 +965,26 @@ const FLASH_REMOVE = "#e78284";
 const FLASH_CLEAR = "#8caaee";
 
 const cpMenu = document.getElementById("cpMenu");
+const cpBackdrop = document.getElementById("cpBackdrop");
 const cpAddBtn = document.getElementById("cpAddBtn");
 const cpRemoveBtn = document.getElementById("cpRemoveBtn");
+const cpCancelBtn = document.getElementById("cpCancelBtn");
 
-function hideCpMenu() { cpMenu.hidden = true; }
+function hideCpMenu() {
+  cpMenu.hidden = true;
+  cpBackdrop.hidden = true;
+}
 
-function showCpMenu(e) {
-  const r = routeCanvas.getBoundingClientRect();
-  const x = e.clientX - r.left, y = e.clientY - r.top;
-  cpMenu.style.left = Math.min(Math.max(8, x - 50), r.width - 8 - 120) + "px";
-  cpMenu.style.top = Math.min(Math.max(8, y - 20), r.height - 8 - 96) + "px";
+function showCpMenu() {
   cpRemoveBtn.disabled = !route.some((p) => p.cp);
   cpMenu.hidden = false;
+  cpBackdrop.hidden = false;
 }
 
 cpAddBtn.addEventListener("click", () => { hideCpMenu(); addCheckpoint(); });
 cpRemoveBtn.addEventListener("click", () => { hideCpMenu(); removeCheckpoint(); });
+cpCancelBtn.addEventListener("click", hideCpMenu);
+cpBackdrop.addEventListener("click", hideCpMenu);
 
 function flashBorder(color) {
   flashColor = color;
@@ -1003,7 +1028,6 @@ function clearAllDots() {
 }
 
 routeCanvas.addEventListener("pointerdown", (e) => {
-  hideCpMenu();
   // a second finger joining means a pinch — nothing else counts
   if (pinchPointers.size >= 2) { tapStart = null; cancelHold(); clearTapTimer(); return; }
   tapStart = { id: e.pointerId, t: performance.now(), x: e.clientX, y: e.clientY };
@@ -1051,7 +1075,7 @@ routeCanvas.addEventListener("pointerup", (e) => {
   tapTimer = setTimeout(() => {
     tapTimer = null;
     tapTimes = [];
-    if (n === 1) showCpMenu(e);
+    if (n === 1) showCpMenu();
     else if (n >= 2) shareRoute();
   }, 500);
 });
@@ -1490,6 +1514,14 @@ if ("serviceWorker" in navigator) {
   });
 }
 </script>
+
+<div id="cpBackdrop" hidden></div>
+<div id="cpMenu" hidden>
+  <div class="cpTitle">CHECKPOINT</div>
+  <button id="cpAddBtn">+ Drop checkpoint here</button>
+  <button id="cpRemoveBtn">− Remove last checkpoint</button>
+  <button id="cpCancelBtn">Cancel</button>
+</div>
 
 </body>
 </html>
