@@ -812,41 +812,34 @@ function drawRouteBox(dt) {
   }
 
   // cardinal markers: letter in a hollow dot riding on its bearing line,
-  // connected to its major tick. The dot rests at the tick's inner end, but
-  // near a corner it slides back along the same line just far enough that
-  // the circle's edge keeps one full big-tick length (clearTick) from the
-  // corner arc — so the tick stretches dynamically to stay connected, and
-  // the gap it fills exactly equals the gap the circle keeps on the corner
-  // side (both are the depth minus the radius). The dot stops there for a
-  // while while the heading sweeps past, then rides back out.
+  // connected to its major tick. While approaching a corner nothing changes
+  // (normal depth, normal tick); once the bearing's border point is actually
+  // on the corner arc the dot eases back along the same line to the
+  // corner-clearance depth, so the tick stretches dynamically to stay
+  // connected and the gap it fills exactly equals the gap the circle keeps
+  // on the corner side (both are the depth minus the radius).
   function drawCardinals(h) {
     rctx.font = Math.round(size * 0.05) + "px " + BEBAS;
     rctx.textAlign = "center";
     rctx.textBaseline = "middle";
     const minGap = ringR + majorTick; // resting circle-centre depth
-    const need = ringR + clearTick;   // min circle-centre distance to a corner arc
-    // distance from a point to the nearest corner arc: the point is always
-    // inside the core square here, so the arc's nearest points are its two
-    // endpoints (where it meets the straight edges)
-    function cornerClear(px, py) {
-      const du = side - Math.abs(px - cx), dv = side - Math.abs(py - cy);
-      return Math.min(Math.hypot(du + rad, dv), Math.hypot(du, dv + rad));
-    }
+    const need = ringR + clearTick;   // parked circle-centre depth at a corner
+    // angular half-width of the corner zone: bearings whose border point
+    // lies on the corner arc (45° minus the core square's half-angle)
+    const zone = 45 - Math.atan(side / half) * 180 / Math.PI;
     const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
     for (const [t, deg, col] of cardinals) {
       const [x, y, nx, ny] = rosePoint(deg - h);
-      // depth along the bearing line: rest at the tick's inner end, or
-      // backed off to the corner-clearance depth; clearance grows
-      // monotonically with depth, so bisection nails the parking spot
+      // angular distance from the nearest corner diagonal: 0 at a corner,
+      // 45° at an edge middle
+      const b = ((deg - h) % 90 + 90) % 90;
+      const w = Math.abs(b - 45);
+      // depth along the bearing line: normal while approaching, easing to
+      // the parked depth only across the corner zone itself
       let c = minGap;
-      if (cornerClear(cx + x - nx * c, cy + y - ny * c) < need) {
-        let lo = c, hi = half;
-        for (let i = 0; i < 24; i++) {
-          const m = (lo + hi) / 2;
-          if (cornerClear(cx + x - nx * m, cy + y - ny * m) < need) lo = m;
-          else hi = m;
-        }
-        c = hi;
+      if (w < zone) {
+        const s = 1 - w / zone; // 1 at the diagonal, 0 at the zone edge
+        c = minGap + (need - minGap) * s * s * (3 - 2 * s);
       }
       const px = cx + x - nx * c;
       const py = cy + y - ny * c;
