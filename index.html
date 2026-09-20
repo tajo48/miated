@@ -1131,8 +1131,9 @@ function renderRouteShare() {
   const dial = 520;
   const headH = 64;
   const statsH = 96;
+  const creditH = 40;
   const W = dial + pad * 2;
-  const H = pad + headH + 18 + dial + 24 + statsH + pad;
+  const H = pad + headH + 18 + dial + 24 + statsH + creditH + pad;
   const out = document.createElement("canvas");
   out.width = W * 2;
   out.height = H * 2;
@@ -1216,6 +1217,14 @@ function renderRouteShare() {
       g.stroke();
     }
   });
+  /* site credit — exports only, same footer style as mood-meter / fitny */
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "22px " + BEBAS;
+  g.fillStyle = "#8caaee";
+  g.letterSpacing = "2px";
+  g.fillText("TAJO48.GITHUB.IO/MIATED", W / 2, sy + statsH + creditH / 2 + 4);
+  g.letterSpacing = "0px";
   return out;
 }
 
