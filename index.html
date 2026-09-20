@@ -23,6 +23,7 @@
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
   html {
+    height: 100%; /* makes body's min-height resolve → route box can dock */
     overscroll-behavior: none;
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* old Edge/IE */
@@ -143,6 +144,9 @@
     margin-top: auto; /* dock at the bottom */
     margin-left: auto;
     margin-right: auto;
+    padding: 0;
+    background: transparent;
+    border: none; /* the canvas carries the single border */
   }
   #routeCard[hidden] { display: none; }
   #route {
@@ -773,18 +777,18 @@ function drawRouteBox(dt) {
     rctx.stroke();
   }
 
-  // cardinal letters: N/E/S/W on the edge midpoints of their sides
+  // cardinal letters: pinned to their sides — the map is north-up, so they
+  // never slide (sliding around the corners was pure jitter)
   rctx.textAlign = "center";
   rctx.textBaseline = "middle";
   rctx.font = Math.round(size * 0.055) + "px " + BEBAS;
-  const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
-  for (const [t, deg, col] of cardinals) {
-    const phi = ((deg - headingSm) * Math.PI) / 180 - Math.PI / 2;
-    const tEdge = edgeR(Math.abs(Math.cos(phi)), Math.abs(Math.sin(phi)));
-    const r = tEdge - size * 0.06;
-    rctx.fillStyle = col;
-    rctx.fillText(t, cx + Math.cos(phi) * r, cy + Math.sin(phi) * r);
-  }
+  const inset = size * 0.055;
+  rctx.fillStyle = "#e78284";
+  rctx.fillText("N", cx, cy - half + inset);
+  rctx.fillStyle = "#a5adce";
+  rctx.fillText("E", cx + half - inset, cy);
+  rctx.fillText("S", cx, cy + half - inset);
+  rctx.fillText("W", cx - half + inset, cy);
 }
 
 /* ---------- allow buttons ---------- */
