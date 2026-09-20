@@ -782,6 +782,9 @@ function drawRouteBox(dt) {
   // exactly at 0/90/180/270 and nothing can jump, bunch or fade at corners
   const hdg = heading || 0;
   const side = half - rad; // straight-edge half-length of the rounded square
+  const ringR = size * 0.045;      // cardinal dot radius
+  const markerInset = size * 0.16; // dot centre depth from the border
+  const majorTick = markerInset - ringR; // major ticks end exactly at the dot
 
   // bearing -> [x, y, outward-normal-x, outward-normal-y] on the border
   function rosePoint(deg) {
@@ -805,36 +808,21 @@ function drawRouteBox(dt) {
     return [x, y, nx, ny];
   }
 
-  // cardinal markers: letter in a hollow dot, riding 1:1 with its major tick
-  // along an edge — but never closer than one tick height (gap) to ANY wall.
-  // When the ride would bring it nearer than that to a side wall or the
-  // corner arc, the marker stops dead at the clearance boundary and holds
-  // while the ticks sweep the corner; it resumes when the rose's slot comes
-  // back inside the clearance on the other side. Entry and exit meet the
-  // same boundary, so the handoff is ~3px — invisible. Pure function of
-  // heading: no easing, no state.
+  // cardinal markers: letter in a hollow dot, rigidly welded to its 90°
+  // major tick — same bearing, same normal, fixed inset. Marker and tick are
+  // one rigid body for all headings: the tick reaches exactly to the dot's
+  // edge (majorTick = markerInset - ringR) so they always connect and the
+  // tick can never overlap the circle. No parking, no clamps, no branches —
+  // nothing that can snap, slide, release or separate.
   function drawCardinals(h) {
     rctx.font = Math.round(size * 0.05) + "px " + BEBAS;
     rctx.textAlign = "center";
     rctx.textBaseline = "middle";
-    const ringR = size * 0.042;
-    const inset = size * 0.05 + ringR; // riding depth: ring edge touches tick end
-    const gap = size * 0.05;           // wall clearance: one tick height
-    // how far along an edge the marker may travel before the corner arc (or
-    // side wall) would violate the clearance: solve dist to corner centre = rad+gap
-    const alongMax = side - Math.sqrt(Math.max(0, (rad + gap) ** 2 - (inset - rad) ** 2));
-    const depth = half - inset; // marker centre distance from dial centre
     const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
     for (const [t, deg, col] of cardinals) {
-      const b = deg - h;
-      const o = (((b % 90) + 135) % 90) - 45; // offset from nearest edge centre
-      const quarter = ((Math.round((b - o) / 90) % 4) + 4) % 4; // 0 top, 1 right, 2 bottom, 3 left
-      const a = Math.max(-alongMax, Math.min(alongMax, half * Math.tan((o * Math.PI) / 180)));
-      let px, py;
-      if (quarter === 0) { px = cx + a; py = cy - depth; }
-      else if (quarter === 1) { px = cx + depth; py = cy + a; }
-      else if (quarter === 2) { px = cx - a; py = cy + depth; }
-      else { px = cx - depth; py = cy + a; }
+      const [x, y, nx, ny] = rosePoint(deg - h);
+      const px = cx + x - nx * markerInset;
+      const py = cy + y - ny * markerInset;
       rctx.beginPath();
       rctx.arc(px, py, ringR, 0, Math.PI * 2);
       rctx.strokeStyle = col;
@@ -850,7 +838,7 @@ function drawRouteBox(dt) {
   for (let i = 0; i < 36; i++) {
     const [x, y, nx, ny] = rosePoint(i * 10 - hdg);
     const major = i % 9 === 0;
-    const tickLen = size * (major ? 0.05 : 0.022);
+    const tickLen = major ? majorTick : size * 0.022; // majors reach the dot
     rctx.beginPath();
     rctx.moveTo(cx + x, cy + y);
     rctx.lineTo(cx + x - nx * tickLen, cy + y - ny * tickLen);
