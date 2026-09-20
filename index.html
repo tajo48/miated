@@ -185,6 +185,11 @@
   <div class="card" id="routeCard" hidden>
     <canvas id="route"></canvas>
   </div>
+
+  <div class="btnRow" id="gpsTools" hidden>
+    <button id="holdGpsBtn" class="allow">Hold GPS</button>
+    <button id="clearDotsBtn" class="allow">Clear dots</button>
+  </div>
 </div>
 
 <script>
@@ -199,6 +204,9 @@ const accelEl = document.getElementById("accel");
 const allowMicBtn = document.getElementById("allowMicBtn");
 const allowGpsBtn = document.getElementById("allowGpsBtn");
 const routeCard = document.getElementById("routeCard");
+const gpsTools = document.getElementById("gpsTools");
+const holdGpsBtn = document.getElementById("holdGpsBtn");
+const clearDotsBtn = document.getElementById("clearDotsBtn");
 const routeCanvas = document.getElementById("route");
 const rctx = routeCanvas.getContext("2d");
 
@@ -588,7 +596,11 @@ function onFix(p) {
   if (!routeShown) {
     routeShown = true;
     routeCard.hidden = false;
+    gpsTools.hidden = false;
   }
+
+  // GPS hold: freeze on the current fix — ignore every new one until resumed
+  if (gpsHeld) return;
 
   // record the traveled route (decimate if it grows huge)
   const last = route[route.length - 1];
@@ -806,10 +818,9 @@ function drawRangeRings(g, cx, cy, s, avail, labelPx, legendPx, half) {
   g.fillText(fmtDist(step) + " · RING", cx - half + 12, cy + half - 12);
 }
 
-let heading = null;       // fused heading, degrees clockwise from TRUE north
-let magHeading = null;    // raw compass heading (magnetic-north referenced)
-let compassOffset = null; // learned magnetic→true offset (declination + mount)
-let lastCourse = null;    // latest GPS course-over-ground (deg)
+let heading = null;    // heading, degrees clockwise from north (raw sources only)
+let magHeading = null; // raw compass heading
+let lastCourse = null; // latest GPS course-over-ground (deg)
 
 const BEBAS = "'Bebas Neue', Impact, Haettenschweiler, 'Arial Narrow', sans-serif";
 
@@ -1055,26 +1066,13 @@ async function shareRoute() {
   downloadBlob(blob, name);
 }
 
-/* ---------- heading fusion: GPS course + magnetometer ---------- */
+/* ---------- heading: raw GPS course + raw compass ---------- */
 
-/* How proper GPS apps do it: while moving, course-over-ground is the truth
-   and the compass is continuously calibrated against it — the learned offset
-   absorbs magnetic declination AND how the phone is mounted. While standing
-   still, the calibrated compass takes over. */
+/* No calibration, no learned offset: while moving, GPS course-over-ground is
+   used as-is; while standing still, the raw compass heading is used as-is. */
 function updateHeading(dt) {
   const moving = (speedSm || 0) > 1.2 && lastCourse !== null;
-  let target = null;
-
-  if (moving) {
-    target = lastCourse;
-    if (magHeading !== null) {
-      const diff = ((lastCourse - magHeading + 540) % 360) - 180;
-      compassOffset = compassOffset === null ? diff : compassOffset + diff * 0.06;
-      compassOffset = ((compassOffset + 540) % 360) - 180;
-    }
-  } else if (magHeading !== null) {
-    target = magHeading + (compassOffset || 0);
-  }
+  const target = moving ? lastCourse : magHeading;
 
   if (target !== null) {
     target = ((target % 360) + 360) % 360;
@@ -1282,6 +1280,20 @@ allowMicBtn.addEventListener("click", () => {
 allowGpsBtn.addEventListener("click", () => {
   startGps();
   updateAllowButton();
+});
+
+/* ---------- GPS hold + route history ---------- */
+
+let gpsHeld = false;
+holdGpsBtn.addEventListener("click", () => {
+  gpsHeld = !gpsHeld;
+  holdGpsBtn.textContent = gpsHeld ? "Resume GPS" : "Hold GPS";
+});
+
+clearDotsBtn.addEventListener("click", () => {
+  if (!confirm("Delete all route dots? This cannot be undone.")) return;
+  route = [];
+  try { localStorage.removeItem(ROUTE_KEY); } catch {}
 });
 
 /* ---------- keep the screen on ---------- */
