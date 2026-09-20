@@ -114,6 +114,7 @@
   button:disabled { opacity: 0.35; cursor: default; }
   button:focus-visible { outline: 2px solid #8caaee; outline-offset: 2px; }
   button:active:not(:disabled) { transform: scale(0.96); }
+  button.secondary { background: transparent; color: #8caaee; }
 
   .track {
     flex: 1 1 120px;
@@ -210,7 +211,8 @@
   <div class="card">
     <div class="row">
       <button id="listenBtn">Listen</button>
-      <span id="listenStatus" class="track">Not listening — tap Listen and share a tab or screen with audio</span>
+      <button id="tabBtn" class="secondary" title="Direct capture: share a tab with audio (best quality; needed when music plays on headphones)">Tab audio</button>
+      <span id="listenStatus" class="track">Not listening — tap Listen (microphone) or Tab audio</span>
     </div>
   </div>
 
@@ -225,7 +227,7 @@
     </div>
   </div>
 
-  <div class="hint">The dot field behind the site dances to any audio playing on this device — tap Listen and share a tab (Spotify, YouTube…) with "share audio". Bass lights the middle rings, highs the outer ones, and every beat sends a wave outward. Capture &amp; GPS need a secure context: <b>localhost</b> on this machine, or <b>https</b> (e.g. the GitHub Pages deploy) — plain http://LAN-IP pages are blocked by Chrome. Desktop-only workaround: chrome://flags/#unsafely-treat-insecure-origin-as-secure.</div>
+  <div class="hint">Listen uses the microphone — it hears any app playing out loud (Spotify, YouTube, radio…). Music on headphones is invisible to a mic, so use Tab audio for a direct digital copy. Both need a secure context: <b>localhost</b> or <b>https</b> — plain http://LAN-IP pages are blocked by Chrome.</div>
 </div>
 
 <div class="install-pill" id="installPill" hidden>
@@ -240,6 +242,7 @@
 const canvas = document.getElementById("viz");
 const ctx = canvas.getContext("2d");
 const listenBtn = document.getElementById("listenBtn");
+const tabBtn = document.getElementById("tabBtn");
 const listenStatus = document.getElementById("listenStatus");
 const speedEl = document.getElementById("speed");
 const accelEl = document.getElementById("accel");
@@ -258,6 +261,7 @@ let freq = null;
 let stream = null;
 let srcNode = null;
 let listening = false;
+let mode = null; // "mic" | "tab"
 
 function ensureGraph() {
   if (actx) {
@@ -274,27 +278,84 @@ function ensureGraph() {
 }
 
 listenBtn.addEventListener("click", () => {
-  if (listening) {
-    stopListen();
-    return;
-  }
-  startListen();
+  if (mode === "mic") stopListen();
+  else startMic();
 });
 
-async function startListen() {
+tabBtn.addEventListener("click", () => {
+  if (mode === "tab") stopListen();
+  else startTab();
+});
+
+function setButtons() {
+  listenBtn.textContent = mode === "mic" ? "Stop" : "Listen";
+  tabBtn.textContent = mode === "tab" ? "Stop" : "Tab audio";
+  listenBtn.disabled = mode === "tab";
+  tabBtn.disabled = mode === "mic";
+}
+
+function blockedStatus() {
+  listenStatus.title = "Microphone & capture are blocked on http:// pages. Open the site via localhost, or use the https GitHub Pages URL. Desktop workaround: chrome://flags/#unsafely-treat-insecure-origin-as-secure";
+  listenStatus.textContent = "Blocked: http:// pages get no mic — use localhost or https";
+}
+
+/* Microphone: the simple path — it hears whatever is playing out loud, from
+   any app. Music on headphones never reaches it, hence the tab option. */
+async function startMic() {
   if (!window.isSecureContext) {
-    // Chrome hides navigator.mediaDevices entirely on plain http:// pages —
-    // only localhost and https count. This is why "it says unsupported".
-    listenStatus.title = "Capture is blocked on http:// pages. Open the site via localhost, or use the https GitHub Pages URL. Desktop workaround: chrome://flags/#unsafely-treat-insecure-origin-as-secure";
-    listenStatus.textContent = "Blocked: http:// pages can't capture — use localhost or https";
+    blockedStatus();
     return;
   }
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-    listenStatus.textContent = "This browser has no tab capture — try Chrome or Firefox";
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    listenStatus.textContent = "Microphone capture not supported in this browser";
     return;
   }
   try {
     listenBtn.disabled = true;
+    const media = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,  // phone-call processing would duck the beats
+        noiseSuppression: false,  // keep the drums
+        autoGainControl: false,   // keep loudness honest for the visualizer
+      },
+    });
+    listenBtn.disabled = false;
+    ensureGraph();
+    srcNode = actx.createMediaStreamSource(media);
+    srcNode.connect(analyser);
+    stream = media;
+    mode = "mic";
+    listening = true;
+    setButtons();
+    listenStatus.textContent = "Listening (mic) — play music out loud";
+  } catch (err) {
+    listenBtn.disabled = false;
+    if (err && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")) {
+      listenStatus.textContent = "Mic permission denied — allow microphone access";
+    } else if (err && err.name === "NotFoundError") {
+      listenStatus.textContent = "No microphone found on this device";
+    } else if (err && err.name === "NotReadableError") {
+      listenStatus.textContent = "Microphone is busy in another app";
+    } else {
+      listenStatus.textContent = "Mic capture failed: " + (err && err.name ? err.name : "unknown");
+    }
+  }
+}
+
+/* Tab capture: the direct path — a digital copy of a tab's audio, no
+   speaker dependency. Secondary because of the picker flow. */
+async function startTab() {
+  if (!window.isSecureContext) {
+    blockedStatus();
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    listenStatus.textContent = "Tab capture not supported in this browser";
+    return;
+  }
+  try {
+    listenBtn.disabled = true;
+    tabBtn.disabled = true;
     const media = await navigator.mediaDevices.getDisplayMedia({
       video: true, // required by Chromium to offer the "share audio" checkbox
       audio: {
@@ -307,10 +368,10 @@ async function startListen() {
       selfBrowserSurface: "exclude", // don't offer to capture miated itself
     });
     listenBtn.disabled = false;
+    tabBtn.disabled = false;
 
     /* Keep the video track ALIVE. Stopping it ends the whole capture session
-       on several Chromium versions — audio included — which made listening
-       look broken. We simply never draw it. */
+       on several Chromium versions — audio included. We simply never draw it. */
 
     if (!media.getAudioTracks().length) {
       media.getTracks().forEach((t) => t.stop());
@@ -325,11 +386,13 @@ async function startListen() {
     srcNode = actx.createMediaStreamSource(media);
     srcNode.connect(analyser); // analyser only — nothing plays twice
 
+    mode = "tab";
     listening = true;
-    listenBtn.textContent = "Stop";
-    listenStatus.textContent = "Listening — play something in the shared tab";
+    setButtons();
+    listenStatus.textContent = "Listening (tab) — play something in the shared tab";
   } catch (err) {
     listenBtn.disabled = false;
+    tabBtn.disabled = false;
     if (err && err.name === "NotAllowedError") {
       listenStatus.textContent = "Share cancelled";
     } else {
@@ -347,9 +410,10 @@ function stopListen() {
     try { srcNode.disconnect(); } catch {}
     srcNode = null;
   }
+  mode = null;
   listening = false;
-  listenBtn.textContent = "Listen";
-  listenStatus.textContent = "Not listening — tap Listen and share a tab or screen with audio";
+  setButtons();
+  listenStatus.textContent = "Not listening — tap Listen (microphone) or Tab audio";
 }
 
 /* ---------- analysis: level, beats, tempo ---------- */
@@ -532,8 +596,10 @@ function frame(ts) {
     if (ts - lastStatusTs > 500) {
       lastStatusTs = ts;
       listenStatus.textContent = silentFor > 3
-        ? "Listening, but it's silent — tick “share tab audio” in the picker, or press play"
-        : "Listening · level " + Math.round(level * 100) + "%";
+        ? "Listening, but it's silent — " + (mode === "mic"
+            ? "turn the volume up, or switch to Tab audio (a mic can't hear headphones)"
+            : "tick “share tab audio” in the picker, or press play")
+        : "Listening (" + mode + ") · level " + Math.round(level * 100) + "%";
     }
   }
 
