@@ -558,8 +558,10 @@ function onFix(p) {
   // record the traveled route (decimate if it grows huge)
   const last = route[route.length - 1];
   if (!last || haversine(last.lat, last.lon, c.latitude, c.longitude) > 2) {
-    route.push({ lat: c.latitude, lon: c.longitude });
+    route.push({ lat: c.latitude, lon: c.longitude, t: Date.now() });
     if (route.length > 1500) route = route.filter((_, i) => i % 2 === 0);
+    pruneRoute();
+    saveRouteSoon();
   }
 
   // GPS course-over-ground: truth while moving, and the reference the
@@ -593,10 +595,10 @@ function onFix(p) {
 
 /* ---------- route box: compass + backtrack ---------- */
 
-/* North-up radar: the traveled route is drawn as dots around your position
-   and the compass rose rotates so your heading sits at the top. Zoom fits
-   the route automatically — tapping +/− overrides it for 5 seconds, then
-   eases back to automatic. Tracking never stops. */
+/* Heading-up radar: the traveled route is drawn as dots around your position
+   and the whole scene — rose AND route — rotates so your heading sits at the
+   top. Zoom fits the route automatically — pinching overrides it for ~10
+   seconds, then it eases back to automatic. Tracking never stops. */
 
 let route = [];
 let routeShown = false;
@@ -604,6 +606,121 @@ let userZoom = 1;      // manual zoom factor while zooming
 let zoomFactor = 1;    // smoothed zoom actually applied
 let lastManualZoom = -1e9;
 let viewScale = null; // smoothed px-per-meter
+
+/* Persistence: every dot carries its creation time (t) and the whole route
+   survives reloads in localStorage, expiring 24 h after it was recorded. */
+const ROUTE_KEY = "miatedRoute";
+const ROUTE_TTL = 24 * 60 * 60 * 1000;
+let routeSaveTimer = null;
+
+function loadRoute() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(ROUTE_KEY) || "null");
+    if (!Array.isArray(arr)) return;
+    const cutoff = Date.now() - ROUTE_TTL;
+    route = arr.filter((p) => p && typeof p.lat === "number" &&
+      typeof p.lon === "number" && typeof p.t === "number" && p.t > cutoff);
+  } catch {} // private mode / quota / corrupt data — start fresh
+}
+
+function pruneRoute() {
+  // cheap: only re-filter once something has actually expired
+  if (route.length && route[0].t <= Date.now() - ROUTE_TTL) {
+    route = route.filter((p) => p.t > Date.now() - ROUTE_TTL);
+  }
+}
+
+function saveRoute() {
+  try {
+    localStorage.setItem(ROUTE_KEY, JSON.stringify(route));
+  } catch {} // private mode / quota — persistence is best-effort
+}
+
+// debounced: at most one write every few seconds while GPS feeds fixes
+function saveRouteSoon() {
+  if (routeSaveTimer) return;
+  routeSaveTimer = setTimeout(() => {
+    routeSaveTimer = null;
+    saveRoute();
+  }, 4000);
+}
+window.addEventListener("pagehide", saveRoute);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") saveRoute();
+});
+loadRoute();
+
+/* Heading-up projection: rotate a dot's east/north offset (meters from the
+   current position) by the heading, so a point that is ahead of me is always
+   up on screen. Shared by the live canvas and the share image. */
+function routeProjector(curPos, hdgDeg) {
+  const rad = Math.PI / 180;
+  const cosH = Math.cos(hdgDeg * rad), sinH = Math.sin(hdgDeg * rad);
+  const mLat = 111320;
+  const mLon = 111320 * Math.cos(curPos.lat * rad);
+  return (p) => {
+    const e = (p.lon - curPos.lon) * mLon;
+    const n = (curPos.lat - p.lat) * mLat;
+    return [e * cosH - n * sinH, e * sinH + n * cosH]; // [screen x, −screen y] in meters
+  };
+}
+
+// fit rule: bounding box of all live dots in rotated screen space, floored
+// so a stationary user isn't pushed way out
+function routeFitExtent(proj, dots) {
+  let e = 5;
+  for (const p of dots) {
+    const [x, y] = proj(p);
+    e = Math.max(e, Math.abs(x), Math.abs(y));
+  }
+  return e;
+}
+
+/* The route layer itself — shared by the live canvas and the share image:
+   a translucent polyline through the dots (oldest → newest, extended to the
+   current position) drawn under the dots, all heading-up. */
+function drawRouteLayer(g, cx, cy, s, hdgDeg, curPos, dots, dotR, markerR) {
+  const proj = routeProjector(curPos, hdgDeg);
+  const pts = dots
+    .map((p) => {
+      const [x, y] = proj(p);
+      return [cx + x * s, cy - y * s, p.t];
+    })
+    .sort((a, b) => a[2] - b[2]); // chronological by creation time, not index
+  const n = pts.length;
+
+  // connecting line: per-segment alpha ramping oldest → newest, ending at me
+  g.lineJoin = "round";
+  g.lineCap = "round";
+  g.lineWidth = dotR * 1.2;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i];
+    const b = i + 1 < n ? pts[i + 1] : [cx, cy];
+    g.beginPath();
+    g.moveTo(a[0], a[1]);
+    g.lineTo(b[0], b[1]);
+    g.strokeStyle = `rgba(140, 170, 238, ${0.15 + (n > 1 ? i / (n - 1) : 1) * 0.45})`;
+    g.stroke();
+  }
+
+  // dots, older ones fading toward the start
+  for (let i = 0; i < n; i++) {
+    const age = n > 1 ? i / (n - 1) : 1;
+    g.beginPath();
+    g.arc(pts[i][0], pts[i][1], dotR, 0, Math.PI * 2);
+    g.fillStyle = `rgba(140, 170, 238, ${0.3 + age * 0.7})`;
+    g.fill();
+  }
+
+  // current position: green dot with a soft glow
+  g.beginPath();
+  g.arc(cx, cy, markerR, 0, Math.PI * 2);
+  g.fillStyle = "#a6d189";
+  g.shadowColor = "#a6d189";
+  g.shadowBlur = 10;
+  g.fill();
+  g.shadowBlur = 0;
+}
 let heading = null;       // fused heading, degrees clockwise from TRUE north
 let magHeading = null;    // raw compass heading (magnetic-north referenced)
 let compassOffset = null; // learned magnetic→true offset (declination + mount)
@@ -628,7 +745,7 @@ window.addEventListener("deviceorientationabsolute", onOrientation, true);
 window.addEventListener("deviceorientation", onOrientation, true);
 
 /* Pinch to zoom the route: two fingers spread/pinch override the automatic
-   fit for 5 seconds, then it eases back to automatic. Tracking never stops. */
+   fit for ~10 seconds, then it eases back to automatic. Tracking never stops. */
 const pinchPointers = new Map(); // pointerId -> [x, y]
 let pinchDist = 0;
 
@@ -648,7 +765,7 @@ routeCanvas.addEventListener("pointermove", (e) => {
     const [a, b] = [...pinchPointers.values()];
     const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
     if (pinchDist > 0 && d > 0) {
-      userZoom = Math.min(30, Math.max(0.2, userZoom * (d / pinchDist)));
+      userZoom = Math.min(50, Math.max(0.1, userZoom * (d / pinchDist)));
       lastManualZoom = performance.now();
     }
     pinchDist = d;
@@ -662,6 +779,182 @@ function releasePinch(e) {
 }
 routeCanvas.addEventListener("pointerup", releasePinch);
 routeCanvas.addEventListener("pointercancel", releasePinch);
+
+/* ---------- share the route view (double-tap the GPS card) ---------- */
+
+/* Two quick taps (< 350 ms apart) on the route canvas render the dial as a
+   PNG and open the system share sheet — or copy/download where sharing
+   files isn't available. Taps that are part of a pinch never trigger it. */
+const canShareFiles = (() => {
+  if (typeof navigator.share !== "function" || typeof navigator.canShare !== "function" || typeof File === "undefined") return false;
+  try {
+    return navigator.canShare({ files: [new File(["x"], "x.png", { type: "image/png" })] });
+  } catch {
+    return false;
+  }
+})();
+
+let shareFlash = -1e9; // timestamp: drawRouteBox flashes the border on share
+let lastTapT = 0;      // end of the previous tap, for double-tap detection
+let tapStart = null;   // { id, t, x, y } of the finger that could be a tap
+
+routeCanvas.addEventListener("pointerdown", (e) => {
+  // a second finger joining means a pinch — not a tap
+  tapStart = pinchPointers.size >= 2 ? null : { id: e.pointerId, t: performance.now(), x: e.clientX, y: e.clientY };
+});
+
+routeCanvas.addEventListener("pointermove", (e) => {
+  if (!tapStart) return;
+  if (pinchPointers.size >= 2 || e.pointerId !== tapStart.id) {
+    tapStart = null;
+    return;
+  }
+  // dragging disqualifies the gesture from being a tap
+  if (Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 12) tapStart = null;
+});
+
+routeCanvas.addEventListener("pointerup", (e) => {
+  const t = tapStart;
+  tapStart = null;
+  if (!t || e.pointerId !== t.id || pinchPointers.size > 0) return;
+  const now = performance.now();
+  if (now - t.t > 400 || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 12) return;
+  if (now - lastTapT < 350) {
+    lastTapT = 0;
+    shareRoute();
+  } else {
+    lastTapT = now;
+  }
+});
+
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function routeDistance() {
+  let d = 0;
+  for (let i = 1; i < route.length; i++) {
+    d += haversine(route[i - 1].lat, route[i - 1].lon, route[i].lat, route[i].lon);
+  }
+  return d;
+}
+
+/* Offscreen render of the dial at 2x for a crisp share image: same
+   projection, fit rule and route layer as the live canvas (reused via
+   routeProjector / routeFitExtent / drawRouteLayer), plus a caption strip. */
+function renderRouteShare() {
+  const pad = 24;
+  const dial = 520;
+  const strip = 88;
+  const W = dial + pad * 2;
+  const H = dial + pad * 2 + strip;
+  const out = document.createElement("canvas");
+  out.width = W * 2;
+  out.height = H * 2;
+  const g = out.getContext("2d");
+  g.scale(2, 2);
+
+  g.fillStyle = "#303446";
+  g.fillRect(0, 0, W, H);
+
+  const hdg = heading || 0;
+  const cx = pad + dial / 2;
+  const cy = pad + dial / 2;
+  const dialHalf = dial / 2;
+  const dialRad = 16;
+
+  // dial background
+  g.beginPath();
+  g.moveTo(cx - dialHalf + dialRad, cy - dialHalf);
+  g.arcTo(cx + dialHalf, cy - dialHalf, cx + dialHalf, cy + dialHalf, dialRad);
+  g.arcTo(cx + dialHalf, cy + dialHalf, cx - dialHalf, cy + dialHalf, dialRad);
+  g.arcTo(cx - dialHalf, cy + dialHalf, cx - dialHalf, cy - dialHalf, dialRad);
+  g.arcTo(cx - dialHalf, cy - dialHalf, cx + dialHalf, cy - dialHalf, dialRad);
+  g.closePath();
+  g.fillStyle = "#292c3c";
+  g.fill();
+  g.lineWidth = 3;
+  g.strokeStyle = "#51576d";
+  g.stroke();
+
+  // heading-up fit, same rule as the live dial
+  const proj = routeProjector(cur, hdg);
+  const s = ((dialHalf - 14) * 0.86) / routeFitExtent(proj, route);
+
+  // route layer, clipped to the dial
+  g.save();
+  g.clip();
+  drawRouteLayer(g, cx, cy, s, hdg, cur, route, 4, 8);
+  g.restore();
+
+  // simplified rose: cardinal letters at their heading-rotated bearings
+  g.font = "34px " + BEBAS;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  const rad = Math.PI / 180;
+  for (const [t, deg, col] of [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]]) {
+    const a = (deg - hdg - 90) * rad;
+    const lx = cx + Math.cos(a) * (dialHalf - 26);
+    const ly = cy + Math.sin(a) * (dialHalf - 26);
+    g.beginPath();
+    g.arc(lx, ly, 17, 0, Math.PI * 2);
+    g.strokeStyle = col;
+    g.lineWidth = 1.5;
+    g.stroke();
+    g.fillStyle = col;
+    g.fillText(t, lx, ly);
+  }
+
+  // caption strip: distance traveled + date
+  const by = pad * 2 + dial;
+  g.textAlign = "left";
+  g.fillStyle = "#a5adce";
+  g.font = "26px " + BEBAS;
+  const km = routeDistance();
+  g.fillText("DISTANCE  " + (km < 950 ? km.toFixed(0) + " M" : (km / 1000).toFixed(2) + " KM"), pad, by + 34);
+  g.textAlign = "right";
+  g.fillStyle = "#8caaee";
+  g.fillText(new Date().toLocaleDateString(), W - pad, by + 34);
+  g.textAlign = "center";
+  g.fillStyle = "#626880";
+  g.font = "20px " + BEBAS;
+  g.fillText("MIATED · ROUTE", W / 2, by + 66);
+  return out;
+}
+
+async function shareRoute() {
+  if (!cur || !route.length) return;
+  shareFlash = performance.now(); // border flash while rendering
+  const blob = await new Promise((res) => renderRouteShare().toBlob(res, "image/png"));
+  if (!blob) return;
+  const name = "miated_" + new Date().toISOString().slice(0, 10) + ".png";
+  if (canShareFiles) {
+    try {
+      await navigator.share({
+        files: [new File([blob], name, { type: "image/png" })],
+        title: "miated — route",
+      });
+      return;
+    } catch (err) {
+      if (err.name === "AbortError") return; // sheet dismissed — do nothing
+      // any other share failure → clipboard, then download
+    }
+  }
+  if (navigator.clipboard && window.ClipboardItem) {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      return;
+    } catch {} // needs a secure context — fall through to download
+  }
+  downloadBlob(blob, name);
+}
 
 /* ---------- heading fusion: GPS course + magnetometer ---------- */
 
@@ -732,55 +1025,50 @@ function drawRouteBox(dt) {
   rctx.strokeStyle = "#51576d";
   rctx.stroke();
 
+  // share feedback: flash the border while the share image is being made
+  const flash = performance.now() - shareFlash;
+  if (flash < 450) {
+    rctx.beginPath();
+    roundedRectPath(rctx, dialHalf, dialRad);
+    rctx.lineWidth = 4;
+    rctx.globalAlpha = 1 - flash / 450;
+    rctx.strokeStyle = "#a6d189";
+    rctx.stroke();
+    rctx.globalAlpha = 1;
+  }
+
   if (!cur) return;
 
-  // local flat projection: meters east / north of the current position
-  const mLat = 111320;
-  const mLon = 111320 * Math.cos((cur.lat * Math.PI) / 180);
-  const east = (p) => (p.lon - cur.lon) * mLon;
-  const north = (p) => (cur.lat - p.lat) * mLat;
+  // one source of truth for rotation: the same smoothed heading the rose uses
+  const hdg = heading || 0;
+  const proj = routeProjector(cur, hdg);
 
-  // auto zoom: fit the whole route around the current position. Manual zoom
-  // (± buttons) overrides for 5s, then zoomFactor eases back to automatic.
-  let maxD = 25;
-  for (const p of route) maxD = Math.max(maxD, Math.hypot(east(p), north(p)));
-  zoomFactor += ((performance.now() - lastManualZoom < 5000 ? userZoom : 1) - zoomFactor) * Math.min(1, dt * 3);
-  const target = ((dialHalf * 0.72) / maxD) * zoomFactor;
-  viewScale = viewScale === null ? target : viewScale + (target - viewScale) * Math.min(1, dt * 3);
+  // auto zoom: fit the bounding box of all live dots (in rotated screen
+  // space) into the dial with a small margin — zoom out only as far as the
+  // route actually needs, and gently zoom back in as it shrinks or dots
+  // expire. Manual pinch overrides for ~10 s, then it eases back to auto.
+  const autoScale = (dialHalf * 0.86) / routeFitExtent(proj, route);
+  const manualActive = performance.now() - lastManualZoom < 10000;
+  // while pinching, zoomFactor follows userZoom immediately (no double
+  // smoothing, so the pinch is visible within a frame); easing back to auto
+  // stays slow and gentle
+  zoomFactor = manualActive ? userZoom : zoomFactor + (1 - zoomFactor) * Math.min(1, dt * 3);
+  const target = autoScale * zoomFactor;
+  viewScale = viewScale === null ? target : viewScale + (target - viewScale) * Math.min(1, dt * (manualActive ? 12 : 3));
   const s = viewScale;
 
-  // the route: dots, older ones fading toward the start
+  // the route: line under dots under the position marker, all heading-up
   rctx.save();
   rctx.beginPath();
   roundedRectPath(rctx, dialHalf - 3, Math.max(4, dialRad - 2));
   rctx.clip();
-  const n = route.length;
-  const dotR = Math.max(1.4, size * 0.009);
-  for (let i = 0; i < n; i++) {
-    const x = cx + east(route[i]) * s;
-    const y = cy - north(route[i]) * s;
-    const age = n > 1 ? i / (n - 1) : 1;
-    rctx.beginPath();
-    rctx.arc(x, y, dotR, 0, Math.PI * 2);
-    rctx.fillStyle = `rgba(140, 170, 238, ${0.3 + age * 0.7})`;
-    rctx.fill();
-  }
-
-  // current position: green dot with a soft glow
-  rctx.beginPath();
-  rctx.arc(cx, cy, Math.max(3, size * 0.016), 0, Math.PI * 2);
-  rctx.fillStyle = "#a6d189";
-  rctx.shadowColor = "#a6d189";
-  rctx.shadowBlur = 10;
-  rctx.fill();
-  rctx.shadowBlur = 0;
+  drawRouteLayer(rctx, cx, cy, s, hdg, cur, route, Math.max(1.4, size * 0.009), Math.max(3, size * 0.016));
   rctx.restore();
 
   // compass rose: each bearing's ray from the center hits the rounded-square
   // border at exactly one point, so ticks and letters are placed radially at
   // true bearings — the rose is a pure rotation of the shape: N/E/S/W sit
   // exactly at 0/90/180/270 and nothing can jump, bunch or fade at corners
-  const hdg = heading || 0;
   const side = half - rad; // straight-edge half-length of the rounded square
   const ringR = size * 0.045;      // cardinal dot radius
   const minorTick = size * 0.022;  // minor tick length
