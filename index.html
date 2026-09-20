@@ -684,13 +684,6 @@ function drawRouteBox(dt) {
   // direction (|ux|,|uy|) — support function of a rounded rect
   const half = dialHalf - 1.5;
   const rad = Math.max(6, dialRad);
-  const c0 = half - rad;
-  function edgeR(ux, uy) {
-    const hi = Math.max(ux, uy);
-    const lo = Math.min(ux, uy);
-    if (lo / hi <= c0 / half) return half / hi; // straight edge region
-    return (rad + c0 * (ux + uy)) / Math.hypot(ux, uy); // corner arc region
-  }
   function roundedRectPath(c, halfSide, r) {
     c.moveTo(cx - halfSide + r, cy - halfSide);
     c.arcTo(cx + halfSide, cy - halfSide, cx + halfSide, cy + halfSide, r);
