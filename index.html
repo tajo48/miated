@@ -107,11 +107,14 @@
   }
   .stat .value {
     font-family: var(--bebas);
-    font-size: 72px;
+    font-size: clamp(36px, 17vw, 72px);
     line-height: 1;
     color: #8caaee;
     font-variant-numeric: tabular-nums;
     min-height: 72px;
+    display: flex;
+    align-items: center;
+    max-width: 100%;
     white-space: nowrap;
   }
   .stat .unit { font-size: 13px; color: #a5adce; }
@@ -473,6 +476,8 @@ requestAnimationFrame(frame);
    acceleration is the smoothed derivative of that speed. */
 
 let prev = null;       // { lat, lon, t, speed } of the previous fix
+const MAX_SPEED = 260 / 3.6; // m/s — GPS fixes faster than this are glitches
+const MAX_ACCEL = 20;        // m/s² — ~2 g; beyond this it's a fix-to-fix spike
 let speedSm = null;    // EMA of speed (m/s)
 let accelSm = null;    // EMA of acceleration (m/s²)
 let maxSpeed = 0;      // session peaks, for the share image
@@ -544,12 +549,40 @@ function startGps() {
   });
 }
 
+// Shrink the big readout font until it fits inside its card.
+function fitValue(el) {
+  el.style.fontSize = "";
+  let size = parseFloat(getComputedStyle(el).fontSize);
+  const avail = el.parentElement.clientWidth - 32; // card width minus side padding
+  while (el.scrollWidth > avail && size > 18) {
+    size -= 2;
+    el.style.fontSize = size + "px";
+  }
+}
+
 function onFix(p) {
   gpsLocked = true;
   gpsAllowed = true;
   updateAllowButton();
   const c = p.coords;
   const t = p.timestamp;
+
+  // Reject fixes that imply physically impossible motion — these are GPS
+  // glitches (multipath, lock re-acquisition) that spike speed/accel and
+  // teleport the route. MAX_SPEED ≈ 260 km/h, MAX_ACCEL ≈ 2 g.
+  if (prev) {
+    const dt = (t - prev.t) / 1000;
+    if (dt > 0 && dt < 10) {
+      const jump = haversine(prev.lat, prev.lon, c.latitude, c.longitude) / dt;
+      if (jump > MAX_SPEED) return; // drop the whole fix, keep prev intact
+    }
+    if (prev.speed != null && c.speed != null && dt > 0 && dt < 2 &&
+        Math.abs(c.speed - prev.speed) > MAX_ACCEL * dt) {
+      // speed spike from the chipset without a matching position jump —
+      // fall back to position-derived speed instead of trusting it
+      c.speed = null;
+    }
+  }
 
   // reveal the route box on the first fix
   if (!routeShown) {
@@ -575,24 +608,28 @@ function onFix(p) {
 
   cur = { lat: c.latitude, lon: c.longitude };
 
-  let speed = c.speed != null && c.speed >= 0 ? c.speed : null; // m/s
+  let speed = c.speed != null && c.speed >= 0 && c.speed <= MAX_SPEED ? c.speed : null; // m/s
   if (speed === null && prev && t > prev.t) {
     const d = haversine(prev.lat, prev.lon, c.latitude, c.longitude);
     const dt = (t - prev.t) / 1000;
-    if (dt > 0) speed = d / dt;
+    if (dt > 0 && d / dt <= MAX_SPEED) speed = d / dt;
   }
 
   if (speed !== null) {
     speedSm = speedSm === null ? speed : speedSm + (speed - speedSm) * 0.35;
     speedEl.textContent = (speedSm * 3.6).toFixed(1);
+    fitValue(speedEl);
     maxSpeed = Math.max(maxSpeed, speedSm);
   }
 
   if (speed !== null && prev && prev.speed !== null && t > prev.t) {
     const a = (speed - prev.speed) / ((t - prev.t) / 1000);
-    accelSm = accelSm === null ? a : accelSm + (a - accelSm) * 0.25;
-    accelEl.textContent = accelSm.toFixed(2);
-    maxAccel = Math.max(maxAccel, Math.abs(accelSm));
+    if (Math.abs(a) <= MAX_ACCEL) { // ignore spike frames entirely
+      accelSm = accelSm === null ? a : accelSm + (a - accelSm) * 0.25;
+      accelEl.textContent = accelSm.toFixed(2);
+      fitValue(accelEl);
+      maxAccel = Math.max(maxAccel, Math.abs(accelSm));
+    }
   }
 
   prev = { lat: c.latitude, lon: c.longitude, t, speed };
