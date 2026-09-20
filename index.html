@@ -250,15 +250,16 @@ function analyse(ts) {
 
 /* ---------- the dot field ---------- */
 
-/* A full-page grid of dots — the site's background. Each dot sits at some
-   distance from the screen center, and that distance picks its frequency
-   band: bass lights the middle rings, highs the outer ones. Every detected
-   beat sends a wave of light expanding through the grid. With no music the
-   field rests in a faint breathing pattern. */
+/* A full-page grid of dots — the site's background. Each dot belongs to a
+   frequency band given by its HEXAGONAL distance from the screen center
+   (1 = on the edge of a big pointy-top hexagon): bass lights the middle
+   hexagons, highs the outer ones, and every detected beat sends a hexagonal
+   wave of light expanding outward. With no music the field rests in a faint
+   breathing pattern. */
 
-const dots = []; // { x, y, dist, hue } in CSS px, rebuilt on resize
+const dots = []; // { x, y, hex, hue } in CSS px, rebuilt on resize
 let gridSpacing = 0;
-let hueDrift2 = 0;
+let hueDrift = 0;
 
 function rebuildGrid() {
   dots.length = 0;
@@ -277,14 +278,19 @@ function rebuildGrid() {
 
   const cx = w / 2;
   const cy = h / 2;
-  const maxDist = Math.hypot(w, h) / 2;
+  const rHex = Math.hypot(w, h) / 2; // hexagon "radius": center → vertex
 
   for (let y = spacing / 2; y < h; y += spacing) {
     for (let x = spacing / 2; x < w; x += spacing) {
       const dx = x - cx;
       const dy = y - cy;
-      const dist = Math.hypot(dx, dy) / maxDist; // 0 center → 1 corner
-      dots.push({ x, y, dist, hue: (30 + dist * 280) % 360 });
+      const r = Math.hypot(dx, dy);
+      // Distance to the hexagon edge along this direction (1 = on the edge,
+      // 0 = center, >1 outside): support function of a regular hexagon.
+      const ang = Math.atan2(dy, dx) - Math.PI / 2; // pointy-top
+      const rel = ((ang % (Math.PI / 3)) + Math.PI / 3) % (Math.PI / 3);
+      const hex = (r * Math.cos(rel - Math.PI / 6)) / (rHex * Math.cos(Math.PI / 6));
+      dots.push({ x, y, hex, hue: (30 + hex * 280) % 360 });
     }
   }
 }
@@ -324,22 +330,22 @@ function draw(ts, dt) {
   const buckets = new Map();
 
   for (const d of dots) {
-    // frequency band by distance from center: bass in the middle, highs outside
+    // frequency band by hexagonal distance from center: bass middle, highs outside
     let v = 0;
     if (analyser && listening) {
-      const bin = 2 + Math.floor(Math.pow(d.dist, 1.35) * 160);
+      const bin = 2 + Math.floor(Math.pow(d.hex, 1.35) * 160);
       v = freq[Math.min(bin, freq.length - 1)] / 255;
     }
 
     // beat waves passing through this dot
     let waveBoost = 0;
     for (const wave of waves) {
-      const dd = (d.dist - wave.r) * 9;
+      const dd = (d.hex - wave.r) * 9;
       waveBoost += Math.exp(-dd * dd) * wave.e;
     }
 
     // idle: faint breathing ripple so the pattern is alive but quiet
-    const idle = 0.04 + 0.03 * Math.sin(t * 0.9 - d.dist * 6);
+    const idle = 0.04 + 0.03 * Math.sin(t * 0.9 - d.hex * 6);
 
     let a = idle + v * 0.75 + waveBoost * 0.45;
     if (a <= 0.02) continue;
