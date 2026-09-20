@@ -805,21 +805,21 @@ function drawRouteBox(dt) {
     return [x, y, nx, ny];
   }
 
-  // cardinal letters: drawn independently of the ticks. Coming up to a corner
-  // a letter rides 1:1 with its major tick, stops dead exactly ON the corner
-  // arc, and holds still while the ticks keep sweeping freely through. Once
-  // the rose has turned DWELL past the corner the letter slides off at a
-  // constant catch-up speed and rejoins its tick exactly at the next edge
-  // midpoint. Pure function of the current heading: no easing, no state, and
-  // continuous everywhere, so nothing can jump or snap back.
-  const DWELL = 15; // deg of rose turn a letter waits at a corner before leaving
+  // cardinal letters: drawn independently of the ticks, and only ever on the
+  // straight edges. A letter rides 1:1 with its major tick until the rose
+  // would carry it onto a corner arc — there it stops dead, holding the end
+  // of that edge while the ticks sweep the corner freely. When the rose has
+  // carried the slot around to the next straight edge, the letter re-appears
+  // at that edge's start (a single instant click; all four letters do it
+  // together) and rides 1:1 again. Pure function of heading: no easing, no
+  // state, and the letter never travels on the corner itself.
+  const EDGE = (Math.atan(side / half) * 180) / Math.PI; // straight-edge half-span in degrees
 
   function letterBearing(b) {
-    const l = (((b - 45) % 90) + 135) % 90 - 45; // signed offset from nearest corner
-    if (l >= 0) return b;                            // approaching: 1:1 with ticks
-    const past = -l;                                 // deg the rose turned past it
-    if (past <= DWELL) return b - l;                 // parked on the corner
-    return b - l - (past - DWELL) * (45 / (45 - DWELL)); // slide to the next side
+    const o = (((b % 90) + 135) % 90) - 45; // offset from nearest edge centre
+    if (o > EDGE) return b - o + EDGE;      // hold the far end of this edge
+    if (o < -EDGE) return b - o - EDGE;     // hold the near end of this edge
+    return b;                               // on the straight: 1:1 with ticks
   }
 
   function drawCardinals(h) {
