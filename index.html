@@ -608,6 +608,7 @@ let heading = null;       // fused heading, degrees clockwise from TRUE north
 let magHeading = null;    // raw compass heading (magnetic-north referenced)
 let compassOffset = null; // learned magnetic→true offset (declination + mount)
 let lastCourse = null;    // latest GPS course-over-ground (deg)
+let roseHeading = 0;      // displayed rose rotation (eased between 10° slots)
 
 const BEBAS = "'Bebas Neue', Impact, Haettenschweiler, 'Arial Narrow', sans-serif";
 
@@ -707,8 +708,8 @@ function drawRouteBox(dt) {
   const cx = w / 2;
   const cy = h / 2;
   const size = Math.min(w, h);
-  const dialHalf = size * 0.46; // half-side of the rounded-square dial
-  const dialRad = dialHalf * 0.22; // corner radius, echoing the box
+  const dialHalf = size / 2 - 1; // border sits flush at the element's end
+  const dialRad = 10; // corner radius matching the canvas corners
 
   // rounded-square edge: distance from center to the dial edge along a
   // direction (|ux|,|uy|) — support function of a rounded rect
@@ -749,8 +750,11 @@ function drawRouteBox(dt) {
   viewScale = viewScale === null ? target : viewScale + (target - viewScale) * Math.min(1, dt * 3);
   const s = viewScale;
 
-  // rose rotation: the fused, smoothed heading (0 = true north at top)
-  const roseHeading = heading || 0;
+  // the rose occupies specific 10° slots and eases between them — letters
+  // hold a precise spot instead of wobbling with GPS course noise
+  const slot = Math.round((heading || 0) / 10) * 10;
+  let dh = ((slot - roseHeading + 540) % 360) - 180;
+  roseHeading += dh * Math.min(1, dt * 6);
 
   // the route: dots, older ones fading toward the start
   rctx.save();
