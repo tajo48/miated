@@ -113,6 +113,26 @@
     white-space: nowrap;
   }
   .stat .unit { font-size: 13px; color: #a5adce; }
+
+  button.allow {
+    font-family: var(--bebas);
+    font-size: 18px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    background: #8caaee;
+    color: #292c3c;
+    border: 2px solid #51576d;
+    border-radius: 6px;
+    padding: 10px 22px 7px;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: transform 0.08s ease;
+  }
+  button.allow:active { transform: scale(0.96); }
+  button.allow:focus-visible { outline: 2px solid #8caaee; outline-offset: 2px; }
+  button.allow[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -123,6 +143,8 @@
   <div class="topbar">
     <div class="brandRow"><img src="favicon.svg" alt=""><h1>Miated</h1></div>
   </div>
+
+  <button id="allowBtn" class="allow">Allow mic &amp; location</button>
 
   <div class="stats">
     <div class="stat"><span class="label">Speed</span><span class="value" id="speed">–</span><span class="unit">km/h</span></div>
@@ -139,6 +161,7 @@ const canvas = document.getElementById("viz");
 const ctx = canvas.getContext("2d");
 const speedEl = document.getElementById("speed");
 const accelEl = document.getElementById("accel");
+const allowBtn = document.getElementById("allowBtn");
 
 /* ---------- microphone (auto-start) ---------- */
 
@@ -207,7 +230,9 @@ function startMic() {
     const srcNode = actx.createMediaStreamSource(media);
     srcNode.connect(analyser);
     listening = true;
+    micAllowed = true;
     wakeAudio();
+    updateAllowButton();
     media.getAudioTracks()[0].addEventListener("ended", () => {
       listening = false;
     });
@@ -427,11 +452,31 @@ function queryPerms() {
   if (!navigator.permissions || !navigator.permissions.query) return;
   navigator.permissions.query({ name: "microphone" }).then((s) => {
     micPerm = s.state;
-    s.onchange = () => { micPerm = s.state; };
+    s.onchange = () => {
+      micPerm = s.state;
+      if (micPerm === "granted") {
+        micAllowed = true;
+        updateAllowButton();
+      }
+    };
+    if (micPerm === "granted") {
+      micAllowed = true;
+      updateAllowButton();
+    }
   }).catch(() => {});
   navigator.permissions.query({ name: "geolocation" }).then((s) => {
     gpsPerm = s.state;
-    s.onchange = () => { gpsPerm = s.state; };
+    s.onchange = () => {
+      gpsPerm = s.state;
+      if (gpsPerm === "granted") {
+        gpsAllowed = true;
+        updateAllowButton();
+      }
+    };
+    if (gpsPerm === "granted") {
+      gpsAllowed = true;
+      updateAllowButton();
+    }
   }).catch(() => {});
 }
 
@@ -460,6 +505,8 @@ function startGps() {
 
 function onFix(p) {
   gpsLocked = true;
+  gpsAllowed = true;
+  updateAllowButton();
   const c = p.coords;
   const t = p.timestamp;
 
@@ -484,6 +531,23 @@ function onFix(p) {
   prev = { lat: c.latitude, lon: c.longitude, t, speed };
 }
 
+/* ---------- allow button ---------- */
+
+/* One explicit tap to ask for both permissions. It stays visible until both
+   are actually granted — a request alone doesn't count as allowed. */
+let micAllowed = false;
+let gpsAllowed = false;
+
+function updateAllowButton() {
+  allowBtn.hidden = micAllowed && gpsAllowed;
+}
+
+allowBtn.addEventListener("click", () => {
+  startMic();
+  startGps();
+  updateAllowButton();
+});
+
 /* ---------- keep the screen on ---------- */
 
 /* Screen Wake Lock: the display stays on while the app is open. The lock is
@@ -505,6 +569,7 @@ window.addEventListener("load", () => {
   startMic();
   startGps();
   requestWakeLock();
+  updateAllowButton();
 });
 
 document.addEventListener("visibilitychange", () => {
