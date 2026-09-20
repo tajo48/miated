@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Miated</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
@@ -152,23 +152,8 @@
     border: 2px solid #51576d;
     border-radius: 10px;
     background: #292c3c; /* mantle: darker than the card, delineates the dial */
+    touch-action: none; /* pinch on the dial zooms the route, not the page */
   }
-  button.mini {
-    font-family: var(--bebas);
-    font-size: 15px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    background: transparent;
-    color: #8caaee;
-    border: 2px solid #51576d;
-    border-radius: 6px;
-    padding: 6px 14px 4px;
-    cursor: pointer;
-    touch-action: manipulation;
-    user-select: none;
-    -webkit-user-select: none;
-  }
-  button.mini:active { transform: scale(0.96); }
   #routeCard[hidden] { display: none; }
 </style>
 </head>
@@ -193,10 +178,6 @@
 
   <div class="card" id="routeCard" hidden>
     <canvas id="route"></canvas>
-    <div class="row">
-      <button id="zoomOut" class="mini">−</button>
-      <button id="zoomIn" class="mini">+</button>
-    </div>
   </div>
 </div>
 
@@ -214,8 +195,6 @@ const allowGpsBtn = document.getElementById("allowGpsBtn");
 const routeCard = document.getElementById("routeCard");
 const routeCanvas = document.getElementById("route");
 const rctx = routeCanvas.getContext("2d");
-const zoomOutBtn = document.getElementById("zoomOut");
-const zoomInBtn = document.getElementById("zoomIn");
 
 /* ---------- microphone (auto-start) ---------- */
 
@@ -643,15 +622,41 @@ function onOrientation(e) {
 window.addEventListener("deviceorientationabsolute", onOrientation, true);
 window.addEventListener("deviceorientation", onOrientation, true);
 
-zoomInBtn.addEventListener("click", () => {
-  userZoom = Math.min(30, userZoom * 1.7);
-  lastManualZoom = performance.now();
+/* Pinch to zoom the route: two fingers spread/pinch override the automatic
+   fit for 5 seconds, then it eases back to automatic. Tracking never stops. */
+const pinchPointers = new Map(); // pointerId -> [x, y]
+let pinchDist = 0;
+
+routeCanvas.addEventListener("pointerdown", (e) => {
+  routeCanvas.setPointerCapture(e.pointerId);
+  pinchPointers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pinchPointers.size === 2) {
+    const [a, b] = [...pinchPointers.values()];
+    pinchDist = Math.hypot(a[0] - b[0], a[1] - b[1]);
+  }
 });
 
-zoomOutBtn.addEventListener("click", () => {
-  userZoom = Math.max(0.2, userZoom / 1.7);
-  lastManualZoom = performance.now();
+routeCanvas.addEventListener("pointermove", (e) => {
+  if (!pinchPointers.has(e.pointerId)) return;
+  pinchPointers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pinchPointers.size === 2) {
+    const [a, b] = [...pinchPointers.values()];
+    const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    if (pinchDist > 0 && d > 0) {
+      userZoom = Math.min(30, Math.max(0.2, userZoom * (d / pinchDist)));
+      lastManualZoom = performance.now();
+    }
+    pinchDist = d;
+    e.preventDefault();
+  }
 });
+
+function releasePinch(e) {
+  pinchPointers.delete(e.pointerId);
+  pinchDist = 0;
+}
+routeCanvas.addEventListener("pointerup", releasePinch);
+routeCanvas.addEventListener("pointercancel", releasePinch);
 
 function drawRouteBox(dt) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -841,6 +846,9 @@ document.addEventListener("visibilitychange", () => {
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").then((reg) => {
+      // Check for an update right away; controllerchange below reloads when
+      // the new worker takes over, so a fresh launch never lags a deploy.
+      reg.update().catch(() => {});
       // Installed PWAs can stay open for days without a normal navigation,
       // which is the only time browsers otherwise bother re-checking sw.js.
       // Poke it whenever the app regains focus, and every 30 minutes while open.

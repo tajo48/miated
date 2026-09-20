@@ -32,6 +32,11 @@ self.addEventListener("install", (e) => {
   );
 });
 
+// The page can fast-forward an update: postMessage("skip") after reg.update().
+self.addEventListener("message", (e) => {
+  if (e.data === "skip") self.skipWaiting();
+});
+
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches
