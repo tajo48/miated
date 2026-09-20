@@ -838,8 +838,9 @@ function drawRouteBox(dt) {
   const cardinals = [["N", 0, "#e78284"], ["E", 0.25, "#a5adce"], ["S", 0.5, "#a5adce"], ["W", 0.75, "#a5adce"]];
   for (const [t, frac, col] of cardinals) {
     const [x, y, nx, ny] = rosePoint(frac * P - headArc);
+    const inset = size * 0.12; // clear of the ticks: letters live inside them
     rctx.fillStyle = col;
-    rctx.fillText(t, x - nx * size * 0.055, y - ny * size * 0.055);
+    rctx.fillText(t, x - nx * inset, y - ny * inset);
   }
 }
 
