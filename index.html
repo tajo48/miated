@@ -133,6 +133,8 @@
   button.allow:active { transform: scale(0.96); }
   button.allow:focus-visible { outline: 2px solid #8caaee; outline-offset: 2px; }
   button.allow[hidden] { display: none; }
+
+  .btnRow { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; width: 100%; }
 </style>
 </head>
 <body>
@@ -144,7 +146,10 @@
     <div class="brandRow"><img src="favicon.svg" alt=""><h1>Miated</h1></div>
   </div>
 
-  <button id="allowBtn" class="allow">Allow mic &amp; location</button>
+  <div class="btnRow">
+    <button id="allowMicBtn" class="allow">Allow mic</button>
+    <button id="allowGpsBtn" class="allow">Allow location</button>
+  </div>
 
   <div class="stats">
     <div class="stat"><span class="label">Speed</span><span class="value" id="speed">–</span><span class="unit">km/h</span></div>
@@ -161,7 +166,8 @@ const canvas = document.getElementById("viz");
 const ctx = canvas.getContext("2d");
 const speedEl = document.getElementById("speed");
 const accelEl = document.getElementById("accel");
-const allowBtn = document.getElementById("allowBtn");
+const allowMicBtn = document.getElementById("allowMicBtn");
+const allowGpsBtn = document.getElementById("allowGpsBtn");
 
 /* ---------- microphone (auto-start) ---------- */
 
@@ -244,7 +250,6 @@ function startMic() {
 let level = 0;        // smoothed overall loudness 0..1
 let beatPulse = 0;    // 1 on a detected beat, decays
 let tempo = 1;        // smoothed speed multiplier derived from BPM
-let hueDrift = 0;     // slow rotation of the field's palette
 
 const bassHistory = [];
 const beatIntervals = [];
@@ -299,7 +304,8 @@ function analyse(ts) {
 
 const dots = []; // { x, y, hex, hue } in CSS px, rebuilt on resize
 let gridSpacing = 0;
-let hueDrift = 0;
+let hueDrift = 0;   // slow rotation of the field's palette
+let hueDrift2 = 0;  // second, slower drift layered on top
 
 function rebuildGrid() {
   dots.length = 0;
@@ -531,19 +537,25 @@ function onFix(p) {
   prev = { lat: c.latitude, lon: c.longitude, t, speed };
 }
 
-/* ---------- allow button ---------- */
+/* ---------- allow buttons ---------- */
 
-/* One explicit tap to ask for both permissions. It stays visible until both
-   are actually granted — a request alone doesn't count as allowed. */
+/* One button per permission: taps are the reliable way to make Chrome show
+   the dialog, and each button stays visible until ITS permission is actually
+   granted — a request alone doesn't count as allowed. */
 let micAllowed = false;
 let gpsAllowed = false;
 
 function updateAllowButton() {
-  allowBtn.hidden = micAllowed && gpsAllowed;
+  allowMicBtn.hidden = micAllowed;
+  allowGpsBtn.hidden = gpsAllowed;
 }
 
-allowBtn.addEventListener("click", () => {
+allowMicBtn.addEventListener("click", () => {
   startMic();
+  updateAllowButton();
+});
+
+allowGpsBtn.addEventListener("click", () => {
   startGps();
   updateAllowButton();
 });
