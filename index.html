@@ -904,27 +904,26 @@ function clearTapTimer() {
 
 /* ---------- checkpoints ---------- */
 
-let checkpoints = []; // manually dropped dots, newest last
-
 function addCheckpoint() {
   if (!cur) return;
-  const cp = { lat: cur.lat, lon: cur.lon, t: Date.now(), cp: true };
-  checkpoints.push(cp);
-  route.push(cp);
+  route.push({ lat: cur.lat, lon: cur.lon, t: Date.now(), cp: true });
   saveRouteSoon();
   shareFlash = performance.now();
 }
 
+// remove the newest checkpoint (marked cp) — repeatable, works across reloads
 function removeCheckpoint() {
-  const cp = checkpoints.pop();
-  if (!cp) return;
-  route = route.filter((p) => p !== cp);
-  saveRoute();
-  shareFlash = performance.now();
+  for (let i = route.length - 1; i >= 0; i--) {
+    if (route[i].cp) {
+      route.splice(i, 1);
+      saveRoute();
+      shareFlash = performance.now();
+      return;
+    }
+  }
 }
 
 function clearAllDots() {
-  checkpoints = [];
   route = [];
   try { localStorage.removeItem(ROUTE_KEY); } catch {}
   saveRouteSoon();
