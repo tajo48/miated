@@ -153,7 +153,6 @@
     width: 100%;
     aspect-ratio: 1 / 1;
     display: block;
-    border: 2px solid #51576d;
     border-radius: 10px;
     background: #292c3c; /* mantle: darker than the card, delineates the dial */
     touch-action: none; /* pinch on the dial zooms the route, not the page */
@@ -729,6 +728,9 @@ function drawRouteBox(dt) {
   roundedRectPath(rctx, dialHalf, dialRad);
   rctx.fillStyle = "#292c3c";
   rctx.fill();
+  rctx.lineWidth = 2;
+  rctx.strokeStyle = "#51576d";
+  rctx.stroke();
 
   if (!cur) return;
 
