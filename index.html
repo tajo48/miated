@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Miated</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#232634">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Miated">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bebas: "Bebas Neue", Impact, Haettenschweiler, "Arial Narrow", sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html {
+    overscroll-behavior: none;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* old Edge/IE */
+  }
+  html::-webkit-scrollbar { display: none; /* Chrome/Safari/WebKit */ }
+
+  body {
+    background: #232634;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 14px calc(24px + env(safe-area-inset-bottom, 0px));
+    font-family: Verdana, "DejaVu Sans", Geneva, sans-serif;
+    color: #c6d0f5;
+    overscroll-behavior: none;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  body::-webkit-scrollbar { display: none; }
+
+  .wrap {
+    width: min(92vw, 480px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  /* ---------- top bar ---------- */
+  .topbar { width: 100%; display: flex; align-items: center; }
+  .brandRow { display: flex; align-items: center; gap: 8px; }
+  .brandRow img { width: 30px; height: 30px; border-radius: 7px; display: block; }
+  .brandRow h1 {
+    font-family: var(--bebas);
+    font-size: 26px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #8caaee;
+    font-weight: normal;
+  }
+
+  /* ---------- stage ---------- */
+  .stage {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #303446;
+    border: 2px solid #51576d;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  #viz { width: 100%; height: 100%; display: block; }
+
+  /* ---------- cards & controls ---------- */
+  .card {
+    background: #303446;
+    border: 2px solid #51576d;
+    border-radius: 6px;
+    padding: 12px 14px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+  button {
+    font-family: var(--bebas);
+    font-size: 18px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: #8caaee;
+    color: #292c3c;
+    border: 2px solid #51576d;
+    border-radius: 6px;
+    padding: 8px 16px 5px;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: transform 0.08s ease;
+  }
+  button:disabled { opacity: 0.35; cursor: default; }
+  button:focus-visible { outline: 2px solid #8caaee; outline-offset: 2px; }
+  button:active:not(:disabled) { transform: scale(0.96); }
+
+  input[type="range"] { accent-color: #8caaee; touch-action: manipulation; }
+  input[type="range"]:disabled { opacity: 0.35; }
+
+  .track {
+    flex: 1 1 120px;
+    min-width: 0;
+    font-size: 12px;
+    color: #a5adce;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  .seekRow { gap: 8px; }
+  .seekRow input { flex: 1; min-width: 0; }
+  .time {
+    font-family: var(--bebas);
+    font-size: 15px;
+    letter-spacing: 1px;
+    color: #a5adce;
+    font-variant-numeric: tabular-nums;
+    min-width: 34px;
+    text-align: center;
+  }
+
+  .sl {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 150px;
+    min-width: 0;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #a5adce;
+    user-select: none;
+  }
+  .sl input { flex: 1; min-width: 0; }
+  #rateVal {
+    font-family: var(--bebas);
+    font-size: 15px;
+    letter-spacing: 1px;
+    color: #8caaee;
+    min-width: 44px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stats { align-items: stretch; }
+  .stat {
+    flex: 1 1 120px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    background: #414559;
+    border: 2px solid #51576d;
+    border-radius: 6px;
+    padding: 9px 12px 7px;
+    user-select: none;
+  }
+  .stat .label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #a5adce;
+  }
+  .stat .value {
+    font-family: var(--bebas);
+    font-size: 34px;
+    line-height: 1.05;
+    color: #8caaee;
+    font-variant-numeric: tabular-nums;
+    min-height: 36px;
+    white-space: nowrap;
+  }
+  .stat .unit { font-size: 11px; color: #a5adce; }
+
+  .hint { font-size: 12px; color: #a5adce; line-height: 1.5; text-align: center; max-width: 92vw; }
+
+  /* Quiet install prompt pinned to the bottom edge; hidden until installable. */
+  .install-pill {
+    position: fixed;
+    left: 50%;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    transform: translate(-50%, 10px);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 14px;
+    background: rgba(65, 69, 89, 0.92);
+    border: 2px solid #51576d;
+    border-radius: 999px;
+    box-shadow: 0 6px 24px rgba(23, 26, 35, 0.5);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    z-index: 10;
+  }
+  .install-pill[hidden] { display: none; }
+  .install-pill.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  .install-pill button {
+    font-family: var(--bebas);
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    cursor: pointer;
+    color: #8caaee;
+    font-size: 16px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 5px 8px 2px;
+    white-space: nowrap;
+  }
+  .install-pill button:hover:not(:disabled) { background: transparent; color: #c6d0f5; }
+
+  /* Short landscape screens (phones): shrink the stage so the controls fit
+     without much scrolling. */
+  @media (max-height: 480px) {
+    .stage { width: min(60vw, 300px); }
+    .stat .value { font-size: 28px; min-height: 30px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brandRow"><img src="favicon.svg" alt=""><h1>Miated</h1></div>
+  </div>
+
+  <div class="stage"><canvas id="viz"></canvas></div>
+
+  <div class="card">
+    <div class="row">
+      <button id="loadBtn">Load audio</button>
+      <span id="track" class="track">No track loaded</span>
+      <input type="file" id="file" accept="audio/*" hidden>
+    </div>
+    <div class="row seekRow">
+      <span class="time" id="tCur">0:00</span>
+      <input type="range" id="seek" min="0" max="1000" value="0" disabled aria-label="Seek">
+      <span class="time" id="tDur">0:00</span>
+    </div>
+    <div class="row">
+      <button id="play" disabled>Play</button>
+      <label class="sl">Vol <input type="range" id="vol" min="0" max="1" step="0.01" value="0.9" aria-label="Volume"></label>
+      <label class="sl">Speed <input type="range" id="rate" min="0.5" max="2" step="0.05" value="1" aria-label="Playback speed"><span id="rateVal">1.00×</span></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row stats">
+      <div class="stat"><span class="label">Speed</span><span class="value" id="speed">–</span><span class="unit">km/h</span></div>
+      <div class="stat"><span class="label">Accel</span><span class="value" id="accel">–</span><span class="unit">m/s²</span></div>
+    </div>
+    <div class="row">
+      <button id="gpsBtn">Start GPS</button>
+      <span id="gpsStatus" class="track">GPS off — live speed &amp; acceleration from location</span>
+    </div>
+  </div>
+
+  <div class="hint">Load a local audio file — the hue dot changes color and the glow dot brightens with the volume, playback speed drives how fast they move. GPS needs https or localhost.</div>
+</div>
+
+<div class="install-pill" id="installPill" hidden>
+  <button class="install-accept" id="installAccept" type="button">Install</button>
+</div>
+
+<audio id="audio"></audio>
+
+<script>
+"use strict";
+
+/* ---------- elements ---------- */
+
+const canvas = document.getElementById("viz");
+const ctx = canvas.getContext("2d");
+const audio = document.getElementById("audio");
+const fileInput = document.getElementById("file");
+const loadBtn = document.getElementById("loadBtn");
+const trackEl = document.getElementById("track");
+const playBtn = document.getElementById("play");
+const seek = document.getElementById("seek");
+const tCur = document.getElementById("tCur");
+const tDur = document.getElementById("tDur");
+const vol = document.getElementById("vol");
+const rate = document.getElementById("rate");
+const rateVal = document.getElementById("rateVal");
+const speedEl = document.getElementById("speed");
+const accelEl = document.getElementById("accel");
+const gpsBtn = document.getElementById("gpsBtn");
+const gpsStatus = document.getElementById("gpsStatus");
+
+/* ---------- music ---------- */
+
+let objectUrl = null;
+
+loadBtn.addEventListener("click", () => fileInput.click());
+
+fileInput.addEventListener("change", () => {
+  const f = fileInput.files[0];
+  if (!f) return;
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  objectUrl = URL.createObjectURL(f);
+  audio.src = objectUrl;
+  trackEl.textContent = f.name;
+  trackEl.title = f.name;
+  playBtn.disabled = false;
+  seek.disabled = false;
+  audio.play().catch(() => {}); // gesture chain usually allows this; Play button is the fallback
+});
+
+function fmt(t) {
+  if (!isFinite(t) || t < 0) return "0:00";
+  const m = Math.floor(t / 60);
+  const s = Math.floor(t % 60);
+  return m + ":" + String(s).padStart(2, "0");
+}
+
+/* Web Audio: the element feeds an analyser so the animation can read the
+   music's volume. Created lazily on first play (needs a user gesture), and
+   only once — a media element source can never be re-created. */
+let actx = null;
+let analyser = null;
+let freq = null;
+
+function ensureGraph() {
+  if (actx) {
+    if (actx.state === "suspended") actx.resume().catch(() => {});
+    return;
+  }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return; // no Web Audio: audio still plays, animation just idles
+  actx = new AC();
+  analyser = actx.createAnalyser();
+  analyser.fftSize = 256;
+  analyser.smoothingTimeConstant = 0.75;
+  actx.createMediaElementSource(audio).connect(analyser);
+  analyser.connect(actx.destination);
+  freq = new Uint8Array(analyser.frequencyBinCount);
+}
+
+playBtn.addEventListener("click", () => {
+  if (audio.paused) audio.play().catch(() => {});
+  else audio.pause();
+});
+
+audio.addEventListener("play", () => {
+  ensureGraph();
+  playBtn.textContent = "Pause";
+});
+audio.addEventListener("pause", () => {
+  playBtn.textContent = "Play";
+});
+
+audio.addEventListener("loadedmetadata", () => {
+  tDur.textContent = fmt(audio.duration);
+});
+
+let seeking = false;
+seek.addEventListener("input", () => {
+  seeking = true;
+  if (audio.duration) tCur.textContent = fmt(audio.duration * seek.value / 1000);
+});
+seek.addEventListener("change", () => {
+  if (audio.duration) audio.currentTime = audio.duration * seek.value / 1000;
+  seeking = false;
+});
+audio.addEventListener("timeupdate", () => {
+  if (seeking) return;
+  tCur.textContent = fmt(audio.currentTime);
+  if (audio.duration) seek.value = Math.round(audio.currentTime / audio.duration * 1000);
+});
+
+vol.addEventListener("input", () => {
+  audio.volume = Number(vol.value);
+});
+audio.volume = Number(vol.value);
+
+rate.addEventListener("input", () => {
+  audio.playbackRate = Number(rate.value);
+  rateVal.textContent = Number(rate.value).toFixed(2) + "×";
+});
+audio.playbackRate = Number(rate.value);
+
+/* ---------- dot animation ---------- */
+
+/* Two dots orbit the center. The hue dot's color follows the music volume,
+   the glow dot's brightness does, and the playback speed sets how fast they
+   circle — so the animation dances even before a track plays. */
+
+let level = 0;   // smoothed 0..1 music volume
+let phase = 0;   // orbit angle
+let lastTs = 0;
+
+function sampleLevel() {
+  if (!analyser || !freq || audio.paused) return 0;
+  analyser.getByteFrequencyData(freq);
+  let sum = 0;
+  const n = freq.length >> 1; // lower half bins = musical energy
+  for (let i = 0; i < n; i++) sum += freq[i];
+  return Math.min(1, (sum / n / 255) * 1.9);
+}
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
+  const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  const cw = canvas.clientWidth;
+  const ch = canvas.clientHeight;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cw, ch);
+
+  const cx = cw / 2;
+  const cy = ch / 2;
+  const unit = Math.min(cw, ch);
+  const R = unit * 0.32;
+
+  // faint orbit guides
+  ctx.lineWidth = Math.max(1.5, unit * 0.008);
+  ctx.strokeStyle = "rgba(197, 208, 245, 0.08)";
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, R * 0.62, 0, Math.PI * 2); ctx.stroke();
+
+  // hue dot — the color follows the volume
+  const rA = unit * (0.06 + 0.035 * level);
+  const ax = cx + Math.cos(phase) * R;
+  const ay = cy + Math.sin(phase) * R;
+  const hue = (215 + level * 250) % 360;
+  ctx.beginPath();
+  ctx.arc(ax, ay, rA, 0, Math.PI * 2);
+  ctx.fillStyle = `hsl(${hue}, ${55 + level * 25}%, ${46 + level * 14}%)`;
+  ctx.fill();
+
+  // glow dot — brightens up with the volume
+  const rB = unit * (0.05 + 0.02 * level);
+  const bx = cx + Math.cos(-phase * 0.63 + Math.PI / 2) * R * 0.62;
+  const by = cy + Math.sin(-phase * 0.63 + Math.PI / 2) * R * 0.62;
+  const colB = `hsl(220, 65%, ${28 + level * 64}%)`;
+  ctx.save();
+  ctx.shadowColor = colB;
+  ctx.shadowBlur = 6 + 42 * level;
+  ctx.beginPath();
+  ctx.arc(bx, by, rB, 0, Math.PI * 2);
+  ctx.fillStyle = colB;
+  ctx.fill();
+  ctx.restore();
+}
+
+function frame(ts) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, lastTs ? (ts - lastTs) / 1000 : 0.016);
+  lastTs = ts;
+  const target = sampleLevel();
+  // fast attack, slow release: dots kick with the beat, fade out gently
+  level += (target - level) * Math.min(1, dt * (target > level ? 14 : 4.5));
+  const speed = audio.playbackRate || 1;
+  phase += dt * speed * (0.55 + level * 2.4);
+  draw();
+}
+requestAnimationFrame(frame);
+
+/* ---------- gps speed & acceleration ---------- */
+
+/* watchPosition feeds fixes; speed comes straight from the device when it
+   has one, otherwise it's derived from the distance between fixes. The
+   acceleration is the smoothed derivative of that speed. */
+
+let watchId = null;
+let prev = null;       // { lat, lon, t, speed } of the previous fix
+let speedSm = null;    // EMA of speed (m/s)
+let accelSm = null;    // EMA of acceleration (m/s²)
+let fixes = 0;
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad;
+  const dLon = (lon2 - lon1) * rad;
+  const s = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(s));
+}
+
+gpsBtn.addEventListener("click", () => {
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+    gpsBtn.textContent = "Start GPS";
+    gpsStatus.textContent = "GPS off — live speed & acceleration from location";
+    speedEl.textContent = "–";
+    accelEl.textContent = "–";
+    return;
+  }
+  if (!("geolocation" in navigator)) {
+    gpsStatus.textContent = "Geolocation is not supported here";
+    return;
+  }
+  prev = null;
+  speedSm = null;
+  accelSm = null;
+  fixes = 0;
+  gpsBtn.textContent = "Stop GPS";
+  gpsStatus.textContent = "Waiting for a fix…";
+  watchId = navigator.geolocation.watchPosition(onFix, onGpsErr, {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 20000,
+  });
+});
+
+function onFix(p) {
+  const c = p.coords;
+  const t = p.timestamp;
+  fixes++;
+
+  let speed = c.speed != null && c.speed >= 0 ? c.speed : null; // m/s
+  let source = "gps";
+  if (speed === null && prev && t > prev.t) {
+    const d = haversine(prev.lat, prev.lon, c.latitude, c.longitude);
+    const dt = (t - prev.t) / 1000;
+    if (dt > 0) {
+      speed = d / dt;
+      source = "derived";
+    }
+  }
+
+  if (speed !== null) {
+    speedSm = speedSm === null ? speed : speedSm + (speed - speedSm) * 0.35;
+    speedEl.textContent = (speedSm * 3.6).toFixed(1);
+  }
+
+  if (speed !== null && prev && prev.speed !== null && t > prev.t) {
+    const a = (speed - prev.speed) / ((t - prev.t) / 1000);
+    accelSm = accelSm === null ? a : accelSm + (a - accelSm) * 0.25;
+    accelEl.textContent = accelSm.toFixed(2);
+  }
+
+  prev = { lat: c.latitude, lon: c.longitude, t, speed };
+  gpsStatus.textContent = `±${Math.round(c.accuracy)} m accuracy · ${fixes} fixes · speed ${source}`;
+}
+
+function onGpsErr(err) {
+  const msgs = {
+    1: "Permission denied — allow location access",
+    2: "Position unavailable — no signal yet",
+    3: "Timed out waiting for a fix",
+  };
+  gpsStatus.textContent = msgs[err.code] || err.message;
+}
+
+/* ---------- install pill ---------- */
+
+const pill = document.getElementById("installPill");
+const installBtn = document.getElementById("installAccept");
+let deferredPrompt = null;
+let pillTimer = 0;
+let pillDismissed = false;
+
+function showPill() {
+  if (pillDismissed) return;
+  clearTimeout(pillTimer);
+  pill.hidden = false;
+  requestAnimationFrame(() => pill.classList.add("show"));
+}
+
+function hidePill() {
+  pill.classList.remove("show");
+  pillTimer = setTimeout(() => {
+    pill.hidden = true;
+  }, 400);
+}
+
+function showPillSoon() {
+  clearTimeout(pillTimer);
+  pillTimer = setTimeout(showPill, 1200);
+}
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault(); // keep Chrome's own infobar out of sight
+  deferredPrompt = e;
+  installBtn.textContent = "Install";
+  showPillSoon();
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredPrompt = null;
+  pillDismissed = true;
+  hidePill();
+});
+
+window.matchMedia("(display-mode: standalone)").addEventListener("change", (e) => {
+  if (e.matches) {
+    pillDismissed = true;
+    hidePill();
+  }
+});
+
+installBtn.addEventListener("click", async () => {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    if (outcome === "accepted") {
+      pillDismissed = true;
+      hidePill();
+    }
+    // Declined: the pill stays put — the user may change their mind.
+  } else {
+    // iOS Safari has no install API; spell out how, and keep it spelled out.
+    installBtn.textContent = "Share → Add to Home Screen";
+  }
+});
+
+/* iOS never fires beforeinstallprompt, so surface the pill there ourselves. */
+const isIOS =
+  /iP(hone|ad|od)/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+if (isIOS && !("onbeforeinstallprompt" in window)) {
+  installBtn.textContent = "Add to Home Screen";
+  showPillSoon();
+}
+
+/* ---------- pwa ---------- */
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").then((reg) => {
+      // Installed PWAs can stay open for days without a normal navigation,
+      // which is the only time browsers otherwise bother re-checking sw.js.
+      // Poke it whenever the app regains focus, and every 30 minutes while open.
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") reg.update().catch(() => {});
+      });
+      setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+    }).catch(() => {});
+  });
+
+  // Once a new service worker takes control, the page it controls is still
+  // running old JS in memory — reload once so the update actually shows up.
+  let swRefreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (swRefreshing) return;
+    swRefreshing = true;
+    window.location.reload();
+  });
+}
+</script>
+
+</body>
+</html>
