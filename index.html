@@ -805,22 +805,36 @@ function drawRouteBox(dt) {
     return [x, y, nx, ny];
   }
 
-  // cardinal markers: each letter sits in a hollow (unfilled) dot that is
-  // statically connected to its 90° major tick — same bearing, fixed inset
-  // along the tick's direction, so the dot's outer edge touches the tick's
-  // inner end and the whole thing rides 1:1 with the rose. One rigid body:
-  // no parking, no warp, nothing that can snap, slide or release.
+  // cardinal markers: letter in a hollow dot, riding 1:1 with its major tick
+  // along an edge — but never closer than one tick height (gap) to ANY wall.
+  // When the ride would bring it nearer than that to a side wall or the
+  // corner arc, the marker stops dead at the clearance boundary and holds
+  // while the ticks sweep the corner; it resumes when the rose's slot comes
+  // back inside the clearance on the other side. Entry and exit meet the
+  // same boundary, so the handoff is ~3px — invisible. Pure function of
+  // heading: no easing, no state.
   function drawCardinals(h) {
     rctx.font = Math.round(size * 0.05) + "px " + BEBAS;
     rctx.textAlign = "center";
     rctx.textBaseline = "middle";
     const ringR = size * 0.042;
-    const inset = size * 0.05 + ringR; // major tick length + ring radius
+    const inset = size * 0.05 + ringR; // riding depth: ring edge touches tick end
+    const gap = size * 0.05;           // wall clearance: one tick height
+    // how far along an edge the marker may travel before the corner arc (or
+    // side wall) would violate the clearance: solve dist to corner centre = rad+gap
+    const alongMax = side - Math.sqrt(Math.max(0, (rad + gap) ** 2 - (inset - rad) ** 2));
+    const depth = half - inset; // marker centre distance from dial centre
     const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
     for (const [t, deg, col] of cardinals) {
-      const [x, y, nx, ny] = rosePoint(deg - h);
-      const px = cx + x - nx * inset;
-      const py = cy + y - ny * inset;
+      const b = deg - h;
+      const o = (((b % 90) + 135) % 90) - 45; // offset from nearest edge centre
+      const quarter = ((Math.round((b - o) / 90) % 4) + 4) % 4; // 0 top, 1 right, 2 bottom, 3 left
+      const a = Math.max(-alongMax, Math.min(alongMax, half * Math.tan((o * Math.PI) / 180)));
+      let px, py;
+      if (quarter === 0) { px = cx + a; py = cy - depth; }
+      else if (quarter === 1) { px = cx + depth; py = cy + a; }
+      else if (quarter === 2) { px = cx - a; py = cy + depth; }
+      else { px = cx - depth; py = cy + a; }
       rctx.beginPath();
       rctx.arc(px, py, ringR, 0, Math.PI * 2);
       rctx.strokeStyle = col;
