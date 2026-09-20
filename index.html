@@ -39,7 +39,7 @@
     align-items: center;
     gap: 14px;
     padding:
-      calc(24px + env(safe-area-inset-top, 0px))
+      calc(40px + env(safe-area-inset-top, 0px))
       calc(14px + env(safe-area-inset-right, 0px))
       calc(24px + env(safe-area-inset-bottom, 0px))
       calc(14px + env(safe-area-inset-left, 0px));
@@ -638,6 +638,25 @@ if (
   };
   addEventListener("pointerdown", goFullscreen, { once: true, capture: true });
 }
+
+/* Cold-start bug workaround: right after the splash screen Chrome can size
+   the renderer for the old viewport (status bar still in it) and never fires
+   a resize when that changes — the layout stays short until minimize/reopen
+   or rotation. Pin the root height to the real visual viewport whenever the
+   surface may have settled, which forces the layout to full size. */
+const root = document.documentElement;
+function syncViewport() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const target = Math.round(vv.height) + "px";
+  if (root.style.height !== target) root.style.height = target;
+}
+syncViewport();
+addEventListener("resize", syncViewport);
+addEventListener("pageshow", syncViewport);
+document.addEventListener("visibilitychange", syncViewport);
+window.visualViewport?.addEventListener("resize", syncViewport);
+for (const delay of [100, 300, 800, 1500, 3000]) setTimeout(syncViewport, delay);
 
 /* ---------- gps speed & acceleration (auto-start) ---------- */
 
