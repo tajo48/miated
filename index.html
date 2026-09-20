@@ -567,8 +567,9 @@ function onFix(p) {
   }
 
   // GPS course-over-ground: truth while moving, and the reference the
-  // compass offset is calibrated against
-  if (c.heading != null && !isNaN(c.heading)) {
+  // compass offset is calibrated against. Phones report garbage course at
+  // low speeds, so only trust it when the fix itself is actually moving.
+  if (c.heading != null && !isNaN(c.heading) && (c.speed == null || c.speed > 1)) {
     lastCourse = c.heading;
   }
 
@@ -887,56 +888,29 @@ function renderRouteShare() {
   g.lineTo(W - pad, pad + headH);
   g.stroke();
 
-  /* dial */
+  /* dial — same chrome and rose as the live canvas */
   const dy = pad + headH + 18;
   const cx = W / 2;
   const cy = dy + dial / 2;
-  const dialHalf = dial / 2;
-  const dialRad = 16;
+  const dialHalf = dial / 2 - 1;
 
-  g.beginPath();
-  g.moveTo(cx - dialHalf + dialRad, cy - dialHalf);
-  g.arcTo(cx + dialHalf, cy - dialHalf, cx + dialHalf, cy + dialHalf, dialRad);
-  g.arcTo(cx + dialHalf, cy + dialHalf, cx - dialHalf, cy + dialHalf, dialRad);
-  g.arcTo(cx - dialHalf, cy + dialHalf, cx - dialHalf, cy - dialHalf, dialRad);
-  g.arcTo(cx - dialHalf, cy - dialHalf, cx + dialHalf, cy - dialHalf, dialRad);
-  g.closePath();
-  g.fillStyle = "#292c3c";
-  g.fill();
-  g.lineWidth = 3;
-  g.strokeStyle = "#51576d";
-  g.stroke();
+  drawDialBackground(g, cx, cy, dial);
 
   // heading-up fit, same rule as the live dial
   const hdg = heading || 0;
   const proj = routeProjector(cur, hdg);
   const s = ((dialHalf - 14) * 0.86) / routeFitExtent(proj, route);
 
-  // route layer, clipped to the dial
+  // route layer, clipped to the dial like the live canvas does
   g.save();
   g.beginPath();
-  g.rect(cx - dialHalf + 2, cy - dialHalf + 2, dial - 4, dial - 4);
+  roundedRectPath(g, cx, cy, dialHalf - 3, 8);
   g.clip();
   drawRouteLayer(g, cx, cy, s, hdg, cur, route, 4, 8);
   g.restore();
 
-  // simplified rose: cardinal letters at their heading-rotated bearings
-  g.font = "34px " + BEBAS;
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  const rad = Math.PI / 180;
-  for (const [t, deg, col] of [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]]) {
-    const a = (deg - hdg - 90) * rad;
-    const lx = cx + Math.cos(a) * (dialHalf - 26);
-    const ly = cy + Math.sin(a) * (dialHalf - 26);
-    g.beginPath();
-    g.arc(lx, ly, 17, 0, Math.PI * 2);
-    g.strokeStyle = col;
-    g.lineWidth = 1.5;
-    g.stroke();
-    g.fillStyle = col;
-    g.fillText(t, lx, ly);
-  }
+  // compass rose — pixel-identical to the live dial's
+  drawRose(g, cx, cy, dial, hdg);
   g.textBaseline = "alphabetic";
 
   /* stats row: four evenly spaced cells, small label over a big value */
@@ -1028,90 +1002,32 @@ function updateHeading(dt) {
   }
 }
 
-function drawRouteBox(dt) {
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = routeCanvas.clientWidth;
-  const h = routeCanvas.clientHeight;
-  if (!w || !h) return;
-  if (routeCanvas.width !== Math.round(w * dpr) || routeCanvas.height !== Math.round(h * dpr)) {
-    routeCanvas.width = Math.round(w * dpr);
-    routeCanvas.height = Math.round(h * dpr);
-  }
-  rctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  rctx.clearRect(0, 0, w, h);
+/* Dial chrome shared by the live canvas and the share image: the rounded
+   square background and the full compass rose (support-function ticks and
+   cardinal dots), so the export looks exactly like the app. */
+function roundedRectPath(g, cx, cy, halfSide, r) {
+  g.moveTo(cx - halfSide + r, cy - halfSide);
+  g.arcTo(cx + halfSide, cy - halfSide, cx + halfSide, cy + halfSide, r);
+  g.arcTo(cx + halfSide, cy + halfSide, cx - halfSide, cy + halfSide, r);
+  g.arcTo(cx - halfSide, cy + halfSide, cx - halfSide, cy - halfSide, r);
+  g.arcTo(cx - halfSide, cy - halfSide, cx + halfSide, cy - halfSide, r);
+  g.closePath();
+}
 
-  const cx = w / 2;
-  const cy = h / 2;
-  const size = Math.min(w, h);
-  const dialHalf = size / 2 - 1; // border sits flush at the element's end
-  const dialRad = 10; // corner radius matching the canvas corners
+function drawDialBackground(g, cx, cy, size) {
+  g.beginPath();
+  roundedRectPath(g, cx, cy, size / 2 - 1, 10);
+  g.fillStyle = "#292c3c";
+  g.fill();
+  g.lineWidth = 2;
+  g.strokeStyle = "#51576d";
+  g.stroke();
+}
 
-  // rounded-square edge: distance from center to the dial edge along a
-  // direction (|ux|,|uy|) — support function of a rounded rect
+function drawRose(g, cx, cy, size, hdgDeg) {
+  const dialHalf = size / 2 - 1;
   const half = dialHalf - 1; // rose edge = the border stroke's inner edge
-  const rad = Math.max(6, dialRad);
-  function roundedRectPath(c, halfSide, r) {
-    c.moveTo(cx - halfSide + r, cy - halfSide);
-    c.arcTo(cx + halfSide, cy - halfSide, cx + halfSide, cy + halfSide, r);
-    c.arcTo(cx + halfSide, cy + halfSide, cx - halfSide, cy + halfSide, r);
-    c.arcTo(cx - halfSide, cy + halfSide, cx - halfSide, cy - halfSide, r);
-    c.arcTo(cx - halfSide, cy - halfSide, cx + halfSide, cy - halfSide, r);
-    c.closePath();
-  }
-
-  // dial background: rounded square (the canvas border is the one border)
-  rctx.beginPath();
-  roundedRectPath(rctx, dialHalf, dialRad);
-  rctx.fillStyle = "#292c3c";
-  rctx.fill();
-  rctx.lineWidth = 2;
-  rctx.strokeStyle = "#51576d";
-  rctx.stroke();
-
-  // share feedback: flash the border while the share image is being made
-  const flash = performance.now() - shareFlash;
-  if (flash < 450) {
-    rctx.beginPath();
-    roundedRectPath(rctx, dialHalf, dialRad);
-    rctx.lineWidth = 4;
-    rctx.globalAlpha = 1 - flash / 450;
-    rctx.strokeStyle = "#a6d189";
-    rctx.stroke();
-    rctx.globalAlpha = 1;
-  }
-
-  if (!cur) return;
-
-  // one source of truth for rotation: the same smoothed heading the rose uses
-  const hdg = heading || 0;
-  const proj = routeProjector(cur, hdg);
-
-  // auto zoom: fit the bounding box of all live dots (in rotated screen
-  // space) into the dial with a small margin — zoom out only as far as the
-  // route actually needs, and gently zoom back in as it shrinks or dots
-  // expire. Manual pinch overrides for ~10 s, then it eases back to auto.
-  const autoScale = (dialHalf * 0.86) / routeFitExtent(proj, route);
-  const manualActive = performance.now() - lastManualZoom < 10000;
-  // while pinching, zoomFactor follows userZoom immediately (no double
-  // smoothing, so the pinch is visible within a frame); easing back to auto
-  // stays slow and gentle
-  zoomFactor = manualActive ? userZoom : zoomFactor + (1 - zoomFactor) * Math.min(1, dt * 3);
-  const target = autoScale * zoomFactor;
-  viewScale = viewScale === null ? target : viewScale + (target - viewScale) * Math.min(1, dt * (manualActive ? 12 : 3));
-  const s = viewScale;
-
-  // the route: line under dots under the position marker, all heading-up
-  rctx.save();
-  rctx.beginPath();
-  roundedRectPath(rctx, dialHalf - 3, Math.max(4, dialRad - 2));
-  rctx.clip();
-  drawRouteLayer(rctx, cx, cy, s, hdg, cur, route, Math.max(1.4, size * 0.009), Math.max(3, size * 0.016));
-  rctx.restore();
-
-  // compass rose: each bearing's ray from the center hits the rounded-square
-  // border at exactly one point, so ticks and letters are placed radially at
-  // true bearings — the rose is a pure rotation of the shape: N/E/S/W sit
-  // exactly at 0/90/180/270 and nothing can jump, bunch or fade at corners
+  const rad = 10;
   const side = half - rad; // straight-edge half-length of the rounded square
   const ringR = size * 0.045;      // cardinal dot radius
   const minorTick = size * 0.022;  // minor tick length
@@ -1147,9 +1063,9 @@ function drawRouteBox(dt) {
   // square). The major tick stretches and tilts from the border point to
   // the dot so they always stay connected.
   function drawCardinals(h) {
-    rctx.font = Math.round(size * 0.05) + "px " + BEBAS;
-    rctx.textAlign = "center";
-    rctx.textBaseline = "middle";
+    g.font = Math.round(size * 0.05) + "px " + BEBAS;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
     const lim = half - clearTick; // the centre may not enter this inset square
     const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
     for (const [t, deg, col] of cardinals) {
@@ -1164,36 +1080,101 @@ function drawRouteBox(dt) {
       // and tilts as needed so it always stays connected
       const ddx = px - (cx + x), ddy = py - (cy + y);
       const dl = Math.hypot(ddx, ddy) || 1;
-      rctx.beginPath();
-      rctx.moveTo(cx + x, cy + y);
-      rctx.lineTo(cx + x + (ddx / dl) * (dl - ringR), cy + y + (ddy / dl) * (dl - ringR));
-      rctx.strokeStyle = "#8caaee";
-      rctx.lineWidth = 2;
-      rctx.stroke();
-      rctx.beginPath();
-      rctx.arc(px, py, ringR, 0, Math.PI * 2);
-      rctx.strokeStyle = col;
-      rctx.lineWidth = 1.5;
-      rctx.stroke();
-      rctx.fillStyle = col;
-      rctx.fillText(t, px, py);
+      g.beginPath();
+      g.moveTo(cx + x, cy + y);
+      g.lineTo(cx + x + (ddx / dl) * (dl - ringR), cy + y + (ddy / dl) * (dl - ringR));
+      g.strokeStyle = "#8caaee";
+      g.lineWidth = 2;
+      g.stroke();
+      g.beginPath();
+      g.arc(px, py, ringR, 0, Math.PI * 2);
+      g.strokeStyle = col;
+      g.lineWidth = 1.5;
+      g.stroke();
+      g.fillStyle = col;
+      g.fillText(t, px, py);
     }
   }
 
   // minor ticks every 10° — each tick starts AT the border so the lines
-  // touch it (majors are drawn with their cardinal dots above)
+  // touch it (majors are stretched to their dots above)
   for (let i = 0; i < 36; i++) {
     if (i % 9 === 0) continue; // majors are stretched to their dots
-    const [x, y, nx, ny] = rosePoint(i * 10 - hdg);
-    rctx.beginPath();
-    rctx.moveTo(cx + x, cy + y);
-    rctx.lineTo(cx + x - nx * minorTick, cy + y - ny * minorTick);
-    rctx.strokeStyle = "#626880";
-    rctx.lineWidth = 1;
-    rctx.stroke();
+    const [x, y, nx, ny] = rosePoint(i * 10 - hdgDeg);
+    g.beginPath();
+    g.moveTo(cx + x, cy + y);
+    g.lineTo(cx + x - nx * minorTick, cy + y - ny * minorTick);
+    g.strokeStyle = "#626880";
+    g.lineWidth = 1;
+    g.stroke();
   }
 
-  drawCardinals(hdg);
+  drawCardinals(hdgDeg);
+}
+
+function drawRouteBox(dt) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = routeCanvas.clientWidth;
+  const h = routeCanvas.clientHeight;
+  if (!w || !h) return;
+  if (routeCanvas.width !== Math.round(w * dpr) || routeCanvas.height !== Math.round(h * dpr)) {
+    routeCanvas.width = Math.round(w * dpr);
+    routeCanvas.height = Math.round(h * dpr);
+  }
+  rctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  rctx.clearRect(0, 0, w, h);
+
+  const cx = w / 2;
+  const cy = h / 2;
+  const size = Math.min(w, h);
+  const dialHalf = size / 2 - 1; // border sits flush at the element's end
+  const dialRad = 10; // corner radius matching the canvas corners
+
+  // dial background: rounded square (the canvas border is the one border)
+  drawDialBackground(rctx, cx, cy, size);
+
+  // share feedback: flash the border while the share image is being made
+  const flash = performance.now() - shareFlash;
+  if (flash < 450) {
+    rctx.beginPath();
+    roundedRectPath(rctx, cx, cy, dialHalf, dialRad);
+    rctx.lineWidth = 4;
+    rctx.globalAlpha = 1 - flash / 450;
+    rctx.strokeStyle = "#a6d189";
+    rctx.stroke();
+    rctx.globalAlpha = 1;
+  }
+
+  if (!cur) return;
+
+  // one source of truth for rotation: the same smoothed heading the rose uses
+  const hdg = heading || 0;
+  const proj = routeProjector(cur, hdg);
+
+  // auto zoom: fit the bounding box of all live dots (in rotated screen
+  // space) into the dial with a small margin — zoom out only as far as the
+  // route actually needs, and gently zoom back in as it shrinks or dots
+  // expire. Manual pinch overrides for ~10 s, then it eases back to auto.
+  const autoScale = (dialHalf * 0.86) / routeFitExtent(proj, route);
+  const manualActive = performance.now() - lastManualZoom < 10000;
+  // while pinching, zoomFactor follows userZoom immediately (no double
+  // smoothing, so the pinch is visible within a frame); easing back to auto
+  // stays slow and gentle
+  zoomFactor = manualActive ? userZoom : zoomFactor + (1 - zoomFactor) * Math.min(1, dt * 3);
+  const target = autoScale * zoomFactor;
+  viewScale = viewScale === null ? target : viewScale + (target - viewScale) * Math.min(1, dt * (manualActive ? 12 : 3));
+  const s = viewScale;
+
+  // the route: line under dots under the position marker, all heading-up
+  rctx.save();
+  rctx.beginPath();
+  roundedRectPath(rctx, cx, cy, dialHalf - 3, Math.max(4, dialRad - 2));
+  rctx.clip();
+  drawRouteLayer(rctx, cx, cy, s, hdg, cur, route, Math.max(1.4, size * 0.009), Math.max(3, size * 0.016));
+  rctx.restore();
+
+  // compass rose — the exact same drawing the share image uses
+  drawRose(rctx, cx, cy, size, hdg);
 }
 
 /* ---------- allow buttons ---------- */
