@@ -230,11 +230,14 @@
      height only, so any resolution from 480p to 1080p gets the same flow. */
   @media (orientation: landscape) and (max-height: 520px) {
     body {
+      /* Base padding clears the camera cutout / gesture zones even when the
+         fullscreen display mode reports env(safe-area-inset-*) as 0; the env
+         terms still add on top where the browser provides them. */
       padding:
-        calc(10px + env(safe-area-inset-top, 0px))
-        calc(16px + env(safe-area-inset-right, 0px))
-        calc(10px + env(safe-area-inset-bottom, 0px))
-        calc(16px + env(safe-area-inset-left, 0px));
+        calc(14px + env(safe-area-inset-top, 0px))
+        calc(28px + env(safe-area-inset-right, 0px))
+        calc(14px + env(safe-area-inset-bottom, 0px))
+        calc(28px + env(safe-area-inset-left, 0px));
       gap: 10px;
     }
     .wrap {
