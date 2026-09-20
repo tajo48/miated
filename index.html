@@ -712,7 +712,7 @@ function drawRouteBox(dt) {
 
   // rounded-square edge: distance from center to the dial edge along a
   // direction (|ux|,|uy|) — support function of a rounded rect
-  const half = dialHalf - 1.5;
+  const half = dialHalf - 1; // rose edge = the border stroke's inner edge
   const rad = Math.max(6, dialRad);
   function roundedRectPath(c, halfSide, r) {
     c.moveTo(cx - halfSide + r, cy - halfSide);
@@ -820,13 +820,14 @@ function drawRouteBox(dt) {
     return [cx - side + s, cy - half, 0, -1];
   }
 
-  // ticks every 10°, majors every 90°
+  // ticks every 10°, majors every 90° — each tick starts AT the border so
+  // the lines touch it
   for (let i = 0; i < 36; i++) {
     const [x, y, nx, ny] = rosePoint((i / 36) * P - headArc);
     const major = i % 9 === 0;
     const tickLen = size * (major ? 0.05 : 0.022);
     rctx.beginPath();
-    rctx.moveTo(x - nx * 2, y - ny * 2);
+    rctx.moveTo(x, y);
     rctx.lineTo(x - nx * tickLen, y - ny * tickLen);
     rctx.strokeStyle = major ? "#8caaee" : "#626880";
     rctx.lineWidth = major ? 2 : 1;
