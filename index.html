@@ -893,6 +893,8 @@ let shareFlash = -1e9; // timestamp: drawRouteBox flashes the border on actions
 let tapTimes = [];     // recent tap timestamps, for multi-tap detection
 let tapStart = null;   // { id, t, x, y } of the finger that could be a tap
 let holdTimer = null;  // pending long-press → delete everything
+let holdStart = null;  // timestamp while the finger is down, for the blue fill
+const HOLD_MS = 1000;  // long-press duration
 let tapTimer = null;   // pending action after a burst of 1/2/3 clicks
 let flashColor = "#a6d189"; // border flash colour of the last action
 
@@ -908,8 +910,9 @@ function flashBorder(color) {
   shareFlash = performance.now();
 }
 
-function clearHoldTimer() {
+function cancelHold() {
   if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+  holdStart = null;
 }
 function clearTapTimer() {
   if (tapTimer) { clearTimeout(tapTimer); tapTimer = null; }
@@ -945,35 +948,37 @@ function clearAllDots() {
 
 routeCanvas.addEventListener("pointerdown", (e) => {
   // a second finger joining means a pinch — nothing else counts
-  if (pinchPointers.size >= 2) { tapStart = null; clearHoldTimer(); clearTapTimer(); return; }
+  if (pinchPointers.size >= 2) { tapStart = null; cancelHold(); clearTapTimer(); return; }
   tapStart = { id: e.pointerId, t: performance.now(), x: e.clientX, y: e.clientY };
-  clearHoldTimer();
+  cancelHold();
   clearTapTimer();
+  holdStart = performance.now();
   holdTimer = setTimeout(() => {
     holdTimer = null;
+    holdStart = null;
     if (!tapStart || tapStart.id !== e.pointerId) return;
     tapStart = null;
     tapTimes = [];
     if (confirm("Delete all checkpoints and dots? This cannot be undone.")) clearAllDots();
-  }, 600);
+  }, HOLD_MS);
 });
 
 routeCanvas.addEventListener("pointermove", (e) => {
   if (!tapStart) return;
   if (pinchPointers.size >= 2 || e.pointerId !== tapStart.id) {
     tapStart = null;
-    clearHoldTimer();
+    cancelHold();
     return;
   }
   // dragging disqualifies the gesture from being a tap or a hold
   if (Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 12) {
     tapStart = null;
-    clearHoldTimer();
+    cancelHold();
   }
 });
 
 routeCanvas.addEventListener("pointerup", (e) => {
-  clearHoldTimer();
+  cancelHold();
   const t = tapStart;
   tapStart = null;
   if (!t || e.pointerId !== t.id || pinchPointers.size > 0) return;
@@ -995,7 +1000,7 @@ routeCanvas.addEventListener("pointerup", (e) => {
   }, 500);
 });
 routeCanvas.addEventListener("pointercancel", () => {
-  clearHoldTimer();
+  cancelHold();
   clearTapTimer();
   tapStart = null;
   tapTimes = [];
@@ -1301,6 +1306,16 @@ function drawRouteBox(dt) {
     rctx.strokeStyle = flashColor;
     rctx.stroke();
     rctx.globalAlpha = 1;
+  }
+
+  // long-press progress: the border fills toward blue over HOLD_MS
+  if (holdStart !== null) {
+    const p = Math.min(1, (performance.now() - holdStart) / HOLD_MS);
+    rctx.beginPath();
+    roundedRectPath(rctx, cx, cy, dialHalf, dialRad);
+    rctx.lineWidth = 2 + p * 4;
+    rctx.strokeStyle = `rgba(138, 173, 244, ${0.15 + p * 0.85})`;
+    rctx.stroke();
   }
 
   if (!cur) return;
