@@ -805,33 +805,23 @@ function drawRouteBox(dt) {
     return [x, y, nx, ny];
   }
 
-  // cardinal letters: drawn independently of the ticks, and only ever on the
-  // straight edges. A letter rides 1:1 with its major tick until the rose
-  // would carry it onto a corner arc — there it stops dead, holding the end
-  // of that edge while the ticks sweep the corner freely. When the rose has
-  // carried the slot around to the next straight edge, the letter re-appears
-  // at that edge's start (a single instant click; all four letters do it
-  // together) and rides 1:1 again. Pure function of heading: no easing, no
-  // state, and the letter never travels on the corner itself.
-  const EDGE = (Math.atan(side / half) * 180) / Math.PI; // straight-edge half-span in degrees
-
-  function letterBearing(b) {
-    const o = (((b % 90) + 135) % 90) - 45; // offset from nearest edge centre
-    if (o > EDGE) return b - o + EDGE;      // hold the far end of this edge
-    if (o < -EDGE) return b - o - EDGE;     // hold the near end of this edge
-    return b;                               // on the straight: 1:1 with ticks
-  }
+  // cardinal letters: drawn independently of the ticks, on a fixed inner
+  // circle — a pure rigid rotation with the rose. Every letter sits at its
+  // exact bearing, radially aligned with its 90° major tick, at constant
+  // distance from the centre: it never wanders out to the border corners.
+  // The math has no branches, so nothing can snap, slide or release —
+  // continuous everywhere by construction.
+  const ORBIT = size * 0.27; // letter orbit radius — well inside the ticks
 
   function drawCardinals(h) {
     rctx.textAlign = "center";
     rctx.textBaseline = "middle";
     rctx.font = Math.round(size * 0.055) + "px " + BEBAS;
-    const inset = size * 0.12; // clear of the ticks: letters live inside them
     const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
     for (const [t, deg, col] of cardinals) {
-      const [x, y, nx, ny] = rosePoint(letterBearing(deg - h));
+      const a = ((deg - h) * Math.PI) / 180; // bearing -> screen angle
       rctx.fillStyle = col;
-      rctx.fillText(t, cx + x - nx * inset, cy + y - ny * inset);
+      rctx.fillText(t, cx + ORBIT * Math.sin(a), cy - ORBIT * Math.cos(a));
     }
   }
 
