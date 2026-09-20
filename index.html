@@ -805,23 +805,29 @@ function drawRouteBox(dt) {
     return [x, y, nx, ny];
   }
 
-  // cardinal letters: drawn independently of the ticks, on a fixed inner
-  // circle — a pure rigid rotation with the rose. Every letter sits at its
-  // exact bearing, radially aligned with its 90° major tick, at constant
-  // distance from the centre: it never wanders out to the border corners.
-  // The math has no branches, so nothing can snap, slide or release —
-  // continuous everywhere by construction.
-  const ORBIT = size * 0.27; // letter orbit radius — well inside the ticks
-
+  // cardinal markers: each letter sits in a hollow (unfilled) dot that is
+  // statically connected to its 90° major tick — same bearing, fixed inset
+  // along the tick's direction, so the dot's outer edge touches the tick's
+  // inner end and the whole thing rides 1:1 with the rose. One rigid body:
+  // no parking, no warp, nothing that can snap, slide or release.
   function drawCardinals(h) {
+    rctx.font = Math.round(size * 0.05) + "px " + BEBAS;
     rctx.textAlign = "center";
     rctx.textBaseline = "middle";
-    rctx.font = Math.round(size * 0.055) + "px " + BEBAS;
+    const ringR = size * 0.042;
+    const inset = size * 0.05 + ringR; // major tick length + ring radius
     const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
     for (const [t, deg, col] of cardinals) {
-      const a = ((deg - h) * Math.PI) / 180; // bearing -> screen angle
+      const [x, y, nx, ny] = rosePoint(deg - h);
+      const px = cx + x - nx * inset;
+      const py = cy + y - ny * inset;
+      rctx.beginPath();
+      rctx.arc(px, py, ringR, 0, Math.PI * 2);
+      rctx.strokeStyle = col;
+      rctx.lineWidth = 1.5;
+      rctx.stroke();
       rctx.fillStyle = col;
-      rctx.fillText(t, cx + ORBIT * Math.sin(a), cy - ORBIT * Math.cos(a));
+      rctx.fillText(t, px, py);
     }
   }
 
