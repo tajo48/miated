@@ -39,7 +39,7 @@
     align-items: center;
     gap: 14px;
     padding:
-      calc(40px + env(safe-area-inset-top, 0px))
+      calc(24px + env(safe-area-inset-top, 0px))
       calc(14px + env(safe-area-inset-right, 0px))
       calc(24px + env(safe-area-inset-bottom, 0px))
       calc(14px + env(safe-area-inset-left, 0px));
@@ -245,7 +245,8 @@
       gap: 10px;
     }
     .wrap {
-      width: min(97vw, 1400px);
+      width: min(90vw, 1300px);
+      margin-inline: auto;
       flex: 1 1 auto;
       display: grid;
       grid-template-columns: 1fr auto;
@@ -657,6 +658,22 @@ addEventListener("pageshow", syncViewport);
 document.addEventListener("visibilitychange", syncViewport);
 window.visualViewport?.addEventListener("resize", syncViewport);
 for (const delay of [100, 300, 800, 1500, 3000]) setTimeout(syncViewport, delay);
+
+/* Deeper workaround for the same cold-start bug: minimize/reopen or rotation
+   makes Chrome recompute the immersive window state, so a fullscreen
+   enter/exit toggle is used as the programmatic equivalent. Tried once
+   shortly after load (usually rejected without a gesture) and again on the
+   first tap, which the browser accepts. */
+async function nudgeImmersive() {
+  try {
+    await document.documentElement.requestFullscreen();
+    await document.exitFullscreen();
+  } catch {}
+}
+if (matchMedia("(display-mode: fullscreen)").matches) {
+  setTimeout(nudgeImmersive, 500);
+  addEventListener("pointerdown", nudgeImmersive, { once: true, capture: true });
+}
 
 /* ---------- gps speed & acceleration (auto-start) ---------- */
 
