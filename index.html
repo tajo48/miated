@@ -24,6 +24,7 @@
 
   html {
     height: 100%; /* makes body's min-height resolve → route box can dock */
+    background: #232634; /* no flash of black when the viewport resizes */
     overscroll-behavior: none;
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* old Edge/IE */
@@ -458,10 +459,40 @@ let gridSpacing = 0;
 let hueDrift = 0;   // slow rotation of the field's palette
 let hueDrift2 = 0;  // second, slower drift layered on top
 
+/* True visible size. window.innerWidth/innerHeight can stay stale right after
+   the system bars hide on fullscreen entry (no resize event fires), leaving
+   black bars at the bottom/right — visualViewport reports the real surface,
+   so prefer it and fall back to the window for old browsers. */
+function viewportSize() {
+  const vv = window.visualViewport;
+  if (vv) return { w: vv.width, h: vv.height };
+  return { w: window.innerWidth, h: window.innerHeight };
+}
+
+// Force a grid rebuild when the visible surface changes without a window
+// resize: bar hide/show on fullscreen entry, rotation, keyboard, etc.
+for (const target of [window.visualViewport, window]) {
+  if (!target) continue;
+  target.addEventListener("resize", () => {
+    const { w, h } = viewportSize();
+    canvas.width = Math.round(w * Math.min(2, window.devicePixelRatio || 1));
+    canvas.height = Math.round(h * Math.min(2, window.devicePixelRatio || 1));
+    rebuildGrid();
+  });
+}
+document.addEventListener("fullscreenchange", () => {
+  // Defer one frame: the viewport metrics settle after the transition.
+  requestAnimationFrame(() => {
+    const { w, h } = viewportSize();
+    canvas.width = Math.round(w * Math.min(2, window.devicePixelRatio || 1));
+    canvas.height = Math.round(h * Math.min(2, window.devicePixelRatio || 1));
+    rebuildGrid();
+  });
+});
+
 function rebuildGrid() {
   dots.length = 0;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  const { w, h } = viewportSize();
   const unit = Math.min(w, h);
   // Dense, but half the previous count: 9–17 px cells (count ∝ 1/spacing²),
   // relaxed only when the viewport is so large that the dot count would tank
@@ -494,8 +525,7 @@ function rebuildGrid() {
 
 function draw(ts, dt) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  const { w, h } = viewportSize();
   if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
