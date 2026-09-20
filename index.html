@@ -785,6 +785,9 @@ function drawRouteBox(dt) {
   const ringR = size * 0.045;      // cardinal dot radius
   const majorTick = size * 0.04;   // major tick length, anchored at the border
   const minorTick = size * 0.022;  // minor tick length
+  const clearTick = size * 0.115;  // original big-tick span: the gap the
+  // circle's edge must keep from a corner arc (independent of the shortened
+  // drawn tick — this is the distance the letters stop at)
 
   // bearing -> [x, y, outward-normal-x, outward-normal-y] on the border
   function rosePoint(deg) {
@@ -808,48 +811,53 @@ function drawRouteBox(dt) {
     return [x, y, nx, ny];
   }
 
-  // cardinal markers: letter in a hollow dot riding at the inner end of
-  // its major tick, so the circle touches the tick and its edge keeps
-  // exactly one tick length of clear space to the border. Near a corner
-  // that depth would break the rule, so the dot slides back toward the
-  // dial centre until it clears and parks there while the heading sweeps
-  // past.
+  // cardinal markers: letter in a hollow dot riding on its bearing line,
+  // connected to its major tick. The dot rests at the tick's inner end, but
+  // near a corner it slides back along the same line just far enough that
+  // the circle's edge keeps one full big-tick length (clearTick) from the
+  // corner arc — so the tick stretches dynamically to stay connected, and
+  // the gap it fills exactly equals the gap the circle keeps on the corner
+  // side (both are the depth minus the radius). The dot stops there for a
+  // while while the heading sweeps past, then rides back out.
   function drawCardinals(h) {
     rctx.font = Math.round(size * 0.05) + "px " + BEBAS;
     rctx.textAlign = "center";
     rctx.textBaseline = "middle";
-    const minGap = ringR + majorTick; // circle centre depth from the border
-    // true distance from a point to the rounded border (square ⊕ corner
-    // circle): corner zone is rad minus distance to the corner centre,
-    // everywhere else it is the depth below the nearest offset edge
-    function borderDist(px, py) {
-      const u = Math.abs(px - cx), v = Math.abs(py - cy);
-      if (u > side || v > side) {
-        const du = u - side, dv = v - side;
-        return u > side && v > side ? rad - Math.hypot(du, dv) : rad - Math.max(du, dv);
-      }
-      return Math.min(side + rad - u, side + rad - v);
+    const minGap = ringR + majorTick; // resting circle-centre depth
+    const need = ringR + clearTick;   // min circle-centre distance to a corner arc
+    // distance from a point to the nearest corner arc: the point is always
+    // inside the core square here, so the arc's nearest points are its two
+    // endpoints (where it meets the straight edges)
+    function cornerClear(px, py) {
+      const du = side - Math.abs(px - cx), dv = side - Math.abs(py - cy);
+      return Math.min(Math.hypot(du + rad, dv), Math.hypot(du, dv + rad));
     }
     const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
     for (const [t, deg, col] of cardinals) {
       const [x, y, nx, ny] = rosePoint(deg - h);
-      let px = cx + x - nx * minGap;
-      let py = cy + y - ny * minGap;
-      // park: on a straight edge the resting spot clears by exactly one
-      // tick; around a corner the border curves away and the distance
-      // drops below one tick, so slide toward the dial centre until the
-      // circle's edge clears by exactly one tick again — distance grows
-      // monotonically along that segment, so bisection nails the spot
-      if (borderDist(px, py) < minGap) {
-        let lo = 0, hi = 1;
+      // depth along the bearing line: rest at the tick's inner end, or
+      // backed off to the corner-clearance depth; clearance grows
+      // monotonically with depth, so bisection nails the parking spot
+      let c = minGap;
+      if (cornerClear(cx + x - nx * c, cy + y - ny * c) < need) {
+        let lo = c, hi = half;
         for (let i = 0; i < 24; i++) {
           const m = (lo + hi) / 2;
-          if (borderDist(px + (cx - px) * m, py + (cy - py) * m) < minGap) lo = m;
+          if (cornerClear(cx + x - nx * m, cy + y - ny * m) < need) lo = m;
           else hi = m;
         }
-        px += (cx - px) * hi;
-        py += (cy - py) * hi;
+        c = hi;
       }
+      const px = cx + x - nx * c;
+      const py = cy + y - ny * c;
+      // major tick: anchored at the border, stretched to the dot's edge so
+      // it always stays connected — dynamically longer at corners
+      rctx.beginPath();
+      rctx.moveTo(cx + x, cy + y);
+      rctx.lineTo(cx + x - nx * (c - ringR), cy + y - ny * (c - ringR));
+      rctx.strokeStyle = "#8caaee";
+      rctx.lineWidth = 2;
+      rctx.stroke();
       rctx.beginPath();
       rctx.arc(px, py, ringR, 0, Math.PI * 2);
       rctx.strokeStyle = col;
@@ -860,18 +868,16 @@ function drawRouteBox(dt) {
     }
   }
 
-  // ticks every 10°, majors every 90° — each tick starts AT the border so
-  // the lines touch it; majors are shorter than they used to be but still
-  // longer and heavier than the minors
+  // minor ticks every 10° — each tick starts AT the border so the lines
+  // touch it (majors are drawn with their cardinal dots above)
   for (let i = 0; i < 36; i++) {
+    if (i % 9 === 0) continue; // majors are stretched to their dots
     const [x, y, nx, ny] = rosePoint(i * 10 - hdg);
-    const major = i % 9 === 0;
-    const tickLen = major ? majorTick : minorTick;
     rctx.beginPath();
     rctx.moveTo(cx + x, cy + y);
-    rctx.lineTo(cx + x - nx * tickLen, cy + y - ny * tickLen);
-    rctx.strokeStyle = major ? "#8caaee" : "#626880";
-    rctx.lineWidth = major ? 2 : 1;
+    rctx.lineTo(cx + x - nx * minorTick, cy + y - ny * minorTick);
+    rctx.strokeStyle = "#626880";
+    rctx.lineWidth = 1;
     rctx.stroke();
   }
 
