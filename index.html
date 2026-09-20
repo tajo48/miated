@@ -693,14 +693,11 @@ function drawRouteBox(dt) {
     c.closePath();
   }
 
-  // dial background: rounded square, like the box
+  // dial background: rounded square (the canvas border is the one border)
   rctx.beginPath();
   roundedRectPath(rctx, dialHalf, dialRad);
   rctx.fillStyle = "#292c3c";
   rctx.fill();
-  rctx.lineWidth = 2;
-  rctx.strokeStyle = "#51576d";
-  rctx.stroke();
 
   if (!cur) return;
 
@@ -751,37 +748,70 @@ function drawRouteBox(dt) {
   rctx.shadowBlur = 0;
   rctx.restore();
 
-  // compass rose: ticks ride the rounded-square edge, heading at the top
+  // compass rose: ticks and letters ride the perimeter of the rounded square
+  // (arc-length parameterized, so motion stays smooth through the corners),
+  // rotated so your heading always sits at the top
+  const side = half - rad;
+  const cArc = (Math.PI / 2) * rad;
+  const P = 8 * side + 4 * cArc;
+  const headArc = (headingSm / 360) * P;
+
+  function rosePoint(s) {
+    s = ((s % P) + P) % P;
+    if (s < side) return [cx + s, cy - half, 0, -1];
+    s -= side;
+    if (s < cArc) {
+      const a = -Math.PI / 2 + s / rad;
+      return [cx + half - rad + rad * Math.cos(a), cy - half + rad + rad * Math.sin(a), Math.cos(a), Math.sin(a)];
+    }
+    s -= cArc;
+    if (s < 2 * side) return [cx + half, cy - side + s, 1, 0];
+    s -= 2 * side;
+    if (s < cArc) {
+      const a = s / rad;
+      return [cx + half - rad + rad * Math.cos(a), cy + half - rad + rad * Math.sin(a), Math.cos(a), Math.sin(a)];
+    }
+    s -= cArc;
+    if (s < 2 * side) return [cx + side - s, cy + half, 0, 1];
+    s -= 2 * side;
+    if (s < cArc) {
+      const a = Math.PI / 2 + s / rad;
+      return [cx - half + rad + rad * Math.cos(a), cy + half - rad + rad * Math.sin(a), Math.cos(a), Math.sin(a)];
+    }
+    s -= cArc;
+    if (s < 2 * side) return [cx - half, cy + side - s, -1, 0];
+    s -= 2 * side;
+    if (s < cArc) {
+      const a = Math.PI + s / rad;
+      return [cx - half + rad + rad * Math.cos(a), cy - half + rad + rad * Math.sin(a), Math.cos(a), Math.sin(a)];
+    }
+    s -= cArc;
+    return [cx - side + s, cy - half, 0, -1];
+  }
+
+  // ticks every 10°, majors every 90°
   for (let i = 0; i < 36; i++) {
-    const deg = i * 10;
-    const phi = ((deg - headingSm) * Math.PI) / 180 - Math.PI / 2;
-    const major = deg % 90 === 0;
-    const tEdge = edgeR(Math.abs(Math.cos(phi)), Math.abs(Math.sin(phi)));
+    const [x, y, nx, ny] = rosePoint((i / 36) * P - headArc);
+    const major = i % 9 === 0;
     const tickLen = size * (major ? 0.05 : 0.022);
-    const x1 = cx + Math.cos(phi) * (tEdge - tickLen);
-    const y1 = cy + Math.sin(phi) * (tEdge - tickLen);
-    const x2 = cx + Math.cos(phi) * (tEdge - 2);
-    const y2 = cy + Math.sin(phi) * (tEdge - 2);
     rctx.beginPath();
-    rctx.moveTo(x1, y1);
-    rctx.lineTo(x2, y2);
+    rctx.moveTo(x - nx * 2, y - ny * 2);
+    rctx.lineTo(x - nx * tickLen, y - ny * tickLen);
     rctx.strokeStyle = major ? "#8caaee" : "#626880";
     rctx.lineWidth = major ? 2 : 1;
     rctx.stroke();
   }
 
-  // cardinal letters: pinned to their sides — the map is north-up, so they
-  // never slide (sliding around the corners was pure jitter)
+  // cardinal letters ride the perimeter just inside the edge
   rctx.textAlign = "center";
   rctx.textBaseline = "middle";
   rctx.font = Math.round(size * 0.055) + "px " + BEBAS;
-  const inset = size * 0.055;
-  rctx.fillStyle = "#e78284";
-  rctx.fillText("N", cx, cy - half + inset);
-  rctx.fillStyle = "#a5adce";
-  rctx.fillText("E", cx + half - inset, cy);
-  rctx.fillText("S", cx, cy + half - inset);
-  rctx.fillText("W", cx - half + inset, cy);
+  const cardinals = [["N", 0, "#e78284"], ["E", 0.25, "#a5adce"], ["S", 0.5, "#a5adce"], ["W", 0.75, "#a5adce"]];
+  for (const [t, frac, col] of cardinals) {
+    const [x, y, nx, ny] = rosePoint(frac * P - headArc);
+    rctx.fillStyle = col;
+    rctx.fillText(t, x - nx * size * 0.055, y - ny * size * 0.055);
+  }
 }
 
 /* ---------- allow buttons ---------- */
