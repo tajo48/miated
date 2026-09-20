@@ -150,6 +150,7 @@ let actx = null;
 let analyser = null;
 let freq = null;
 let listening = false;
+let micTries = 0;    // bounded retries: a user gesture is what makes Chrome prompt
 
 function ensureGraph() {
   if (actx) {
@@ -165,19 +166,33 @@ function ensureGraph() {
   freq = new Uint8Array(analyser.frequencyBinCount);
 }
 
-/* Autoplay policy: a fresh AudioContext stays suspended until the user
-   touches the page. Grab the first gesture anywhere and wake it. */
+/* Autoplay + permissions: Chrome won't always prompt without user activation,
+   so every tap re-attempts (bounded) until both streams are in. */
 function wakeAudio() {
   if (actx && actx.state === "suspended") actx.resume().catch(() => {});
 }
-["pointerdown", "touchstart", "keydown"].forEach((ev) =>
-  document.addEventListener(ev, wakeAudio)
+let gestureTries = 0;
+function onGesture() {
+  wakeAudio();
+  if (gestureTries < 60) {
+    gestureTries++;
+    startMic();
+    startGps();
+  }
+}
+["pointerdown", "keydown"].forEach((ev) =>
+  document.addEventListener(ev, onGesture)
 );
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") wakeAudio();
+  if (document.visibilityState === "visible") {
+    onGesture();
+    requestWakeLock();
+  }
 });
 
 function startMic() {
+  if (listening || micPerm === "denied" || micTries >= 30) return;
+  micTries++;
   if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     return; // no mic path (insecure origin / unsupported) — dots just idle
   }
@@ -398,6 +413,28 @@ let prev = null;       // { lat, lon, t, speed } of the previous fix
 let speedSm = null;    // EMA of speed (m/s)
 let accelSm = null;    // EMA of acceleration (m/s²)
 
+let watchId = null;
+let gpsTries = 0;
+let gpsLocked = false;
+
+/* Android's quiet permission UI silently auto-denies load-time requests.
+   Knowing the state keeps retries sane: "denied" can only be fixed in site
+   settings, "prompt" is worth re-asking on every tap. */
+let micPerm = null; // "granted" | "denied" | "prompt"
+let gpsPerm = null;
+
+function queryPerms() {
+  if (!navigator.permissions || !navigator.permissions.query) return;
+  navigator.permissions.query({ name: "microphone" }).then((s) => {
+    micPerm = s.state;
+    s.onchange = () => { micPerm = s.state; };
+  }).catch(() => {});
+  navigator.permissions.query({ name: "geolocation" }).then((s) => {
+    gpsPerm = s.state;
+    s.onchange = () => { gpsPerm = s.state; };
+  }).catch(() => {});
+}
+
 function haversine(lat1, lon1, lat2, lon2) {
   const rad = Math.PI / 180;
   const dLat = (lat2 - lat1) * rad;
@@ -408,10 +445,13 @@ function haversine(lat1, lon1, lat2, lon2) {
 }
 
 function startGps() {
+  if (gpsLocked || gpsPerm === "denied" || gpsTries >= 20) return;
+  gpsTries++;
   if (!window.isSecureContext || !("geolocation" in navigator)) {
     return; // no GPS path — readouts just stay at –
   }
-  navigator.geolocation.watchPosition(onFix, () => {}, {
+  if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+  watchId = navigator.geolocation.watchPosition(onFix, () => {}, {
     enableHighAccuracy: true,
     maximumAge: 0,
     timeout: 20000,
@@ -419,6 +459,7 @@ function startGps() {
 }
 
 function onFix(p) {
+  gpsLocked = true;
   const c = p.coords;
   const t = p.timestamp;
 
@@ -460,6 +501,7 @@ function requestWakeLock() {
 /* ---------- auto-start everything ---------- */
 
 window.addEventListener("load", () => {
+  queryPerms();
   startMic();
   startGps();
   requestWakeLock();
