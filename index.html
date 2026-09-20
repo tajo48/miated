@@ -877,9 +877,9 @@ routeCanvas.addEventListener("pointercancel", releasePinch);
 /* One click drops a checkpoint at the current position, two quick clicks
    share the route view as a PNG, three clicks remove the newest checkpoint,
    and holding a finger down for ~600 ms asks to delete every checkpoint and
-   dot. Because 1/2/3 clicks are all valid, the action fires ~350 ms after
-   the last click of a burst. Taps that are part of a pinch never trigger
-   anything. */
+   dot. Because 1/2/3 clicks are all valid, the action fires ~400 ms after
+   the last click of a burst (taps up to 450 ms apart count as one burst).
+   Taps that are part of a pinch never trigger anything. */
 const canShareFiles = (() => {
   if (typeof navigator.share !== "function" || typeof navigator.canShare !== "function" || typeof File === "undefined") return false;
   try {
@@ -970,7 +970,7 @@ routeCanvas.addEventListener("pointerup", (e) => {
     tapTimes = [];
     return;
   }
-  tapTimes = tapTimes.filter((tt) => now - tt < 350);
+  tapTimes = tapTimes.filter((tt) => now - tt < 450);
   tapTimes.push(now);
   clearTapTimer();
   const n = tapTimes.length;
@@ -980,7 +980,7 @@ routeCanvas.addEventListener("pointerup", (e) => {
     if (n === 1) addCheckpoint();
     else if (n === 2) shareRoute();
     else if (n >= 3) removeCheckpoint();
-  }, 350);
+  }, 400);
 });
 routeCanvas.addEventListener("pointercancel", () => {
   clearHoldTimer();
