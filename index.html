@@ -805,9 +805,23 @@ function drawRouteBox(dt) {
     return [x, y, nx, ny];
   }
 
-  // cardinal letters: drawn independently of the ticks but at their exact
-  // bearings, so each letter stays locked to its 90° major tick at every
-  // rotation angle — the whole rose (ticks + letters) is one pure rotation.
+  // cardinal letters: drawn independently of the ticks. Coming up to a corner
+  // a letter rides 1:1 with its major tick, stops dead exactly ON the corner
+  // arc, and holds still while the ticks keep sweeping freely through. Once
+  // the rose has turned DWELL past the corner the letter slides off at a
+  // constant catch-up speed and rejoins its tick exactly at the next edge
+  // midpoint. Pure function of the current heading: no easing, no state, and
+  // continuous everywhere, so nothing can jump or snap back.
+  const DWELL = 15; // deg of rose turn a letter waits at a corner before leaving
+
+  function letterBearing(b) {
+    const l = (((b - 45) % 90) + 135) % 90 - 45; // signed offset from nearest corner
+    if (l >= 0) return b;                            // approaching: 1:1 with ticks
+    const past = -l;                                 // deg the rose turned past it
+    if (past <= DWELL) return b - l;                 // parked on the corner
+    return b - l - (past - DWELL) * (45 / (45 - DWELL)); // slide to the next side
+  }
+
   function drawCardinals(h) {
     rctx.textAlign = "center";
     rctx.textBaseline = "middle";
@@ -815,7 +829,7 @@ function drawRouteBox(dt) {
     const inset = size * 0.12; // clear of the ticks: letters live inside them
     const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
     for (const [t, deg, col] of cardinals) {
-      const [x, y, nx, ny] = rosePoint(deg - h);
+      const [x, y, nx, ny] = rosePoint(letterBearing(deg - h));
       rctx.fillStyle = col;
       rctx.fillText(t, cx + x - nx * inset, cy + y - ny * inset);
     }
