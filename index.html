@@ -59,6 +59,7 @@
   .wrap {
     position: relative;
     z-index: 1;
+    flex: 1 0 auto; /* lets the route box dock at the bottom of the viewport */
     width: min(92vw, 480px);
     display: flex;
     flex-direction: column;
@@ -137,11 +138,19 @@
   .btnRow { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; width: 100%; }
 
   /* ---------- route box (compass + backtrack) ---------- */
+  #routeCard {
+    width: min(64vw, 280px);
+    margin-top: auto; /* dock at the bottom */
+    margin-left: auto;
+    margin-right: auto;
+  }
+  #routeCard[hidden] { display: none; }
   #route {
     width: 100%;
     aspect-ratio: 1 / 1;
     display: block;
-    border-radius: 6px;
+    border: 2px solid #51576d;
+    border-radius: 10px;
     background: #292c3c; /* mantle: darker than the card, delineates the dial */
   }
   button.mini {
@@ -160,7 +169,6 @@
     -webkit-user-select: none;
   }
   button.mini:active { transform: scale(0.96); }
-  .spacer { flex: 1; }
   #routeCard[hidden] { display: none; }
 </style>
 </head>
@@ -186,9 +194,6 @@
   <div class="card" id="routeCard" hidden>
     <canvas id="route"></canvas>
     <div class="row">
-      <button id="pinBtn" class="mini">Pin</button>
-      <button id="pauseBtn" class="mini">Pause</button>
-      <span class="spacer"></span>
       <button id="zoomOut" class="mini">−</button>
       <button id="zoomIn" class="mini">+</button>
     </div>
@@ -209,8 +214,6 @@ const allowGpsBtn = document.getElementById("allowGpsBtn");
 const routeCard = document.getElementById("routeCard");
 const routeCanvas = document.getElementById("route");
 const rctx = routeCanvas.getContext("2d");
-const pinBtn = document.getElementById("pinBtn");
-const pauseBtn = document.getElementById("pauseBtn");
 const zoomOutBtn = document.getElementById("zoomOut");
 const zoomInBtn = document.getElementById("zoomIn");
 
@@ -570,12 +573,10 @@ function onFix(p) {
   }
 
   // record the traveled route (decimate if it grows huge)
-  if (recording) {
-    const last = route[route.length - 1];
-    if (!last || haversine(last.lat, last.lon, c.latitude, c.longitude) > 2) {
-      route.push({ lat: c.latitude, lon: c.longitude });
-      if (route.length > 1500) route = route.filter((_, i) => i % 2 === 0);
-    }
+  const last = route[route.length - 1];
+  if (!last || haversine(last.lat, last.lon, c.latitude, c.longitude) > 2) {
+    route.push({ lat: c.latitude, lon: c.longitude });
+    if (route.length > 1500) route = route.filter((_, i) => i % 2 === 0);
   }
 
   // course-over-ground as a heading fallback while moving (no compass event)
@@ -608,16 +609,16 @@ function onFix(p) {
 
 /* ---------- route box: compass + backtrack ---------- */
 
-/* North-up radar: the traveled route is drawn as dots around your position,
-   an arrow shows your heading, and the compass rose rotates so the heading
-   sits at the top. Zoom fits the route automatically; +/− scale manually.
-   "Pin" tags the current spot, "Pause" stops recording. */
+/* North-up radar: the traveled route is drawn as dots around your position
+   and the compass rose rotates so your heading sits at the top. Zoom fits
+   the route automatically — tapping +/− overrides it for 5 seconds, then
+   eases back to automatic. Tracking never stops. */
 
 let route = [];
-let waypoints = [];
-let recording = true;
 let routeShown = false;
-let userZoom = 1;
+let userZoom = 1;      // manual zoom factor while zooming
+let zoomFactor = 1;    // smoothed zoom actually applied
+let lastManualZoom = -1e9;
 let viewScale = null; // smoothed px-per-meter
 let heading = 0;      // degrees clockwise from north
 let headingSm = null;
@@ -642,20 +643,15 @@ function onOrientation(e) {
 window.addEventListener("deviceorientationabsolute", onOrientation, true);
 window.addEventListener("deviceorientation", onOrientation, true);
 
-pinBtn.addEventListener("click", () => {
-  if (!cur) return;
-  waypoints.push({ lat: cur.lat, lon: cur.lon });
-  if (waypoints.length > 24) waypoints.shift();
-  if (navigator.vibrate) navigator.vibrate(30);
+zoomInBtn.addEventListener("click", () => {
+  userZoom = Math.min(30, userZoom * 1.7);
+  lastManualZoom = performance.now();
 });
 
-pauseBtn.addEventListener("click", () => {
-  recording = !recording;
-  pauseBtn.textContent = recording ? "Pause" : "Resume";
+zoomOutBtn.addEventListener("click", () => {
+  userZoom = Math.max(0.2, userZoom / 1.7);
+  lastManualZoom = performance.now();
 });
-
-zoomInBtn.addEventListener("click", () => { userZoom = Math.min(30, userZoom * 1.7); });
-zoomOutBtn.addEventListener("click", () => { userZoom = Math.max(0.2, userZoom / 1.7); });
 
 function drawRouteBox(dt) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -691,11 +687,12 @@ function drawRouteBox(dt) {
   const east = (p) => (p.lon - cur.lon) * mLon;
   const north = (p) => (cur.lat - p.lat) * mLat;
 
-  // auto zoom: fit the whole route (and pins) around the current position
+  // auto zoom: fit the whole route around the current position. Manual zoom
+  // (± buttons) overrides for 5s, then zoomFactor eases back to automatic.
   let maxD = 25;
   for (const p of route) maxD = Math.max(maxD, Math.hypot(east(p), north(p)));
-  for (const p of waypoints) maxD = Math.max(maxD, Math.hypot(east(p), north(p)));
-  const target = ((dialR * 0.72) / maxD) * userZoom;
+  zoomFactor += ((performance.now() - lastManualZoom < 5000 ? userZoom : 1) - zoomFactor) * Math.min(1, dt * 3);
+  const target = ((dialR * 0.72) / maxD) * zoomFactor;
   viewScale = viewScale === null ? target : viewScale + (target - viewScale) * Math.min(1, dt * 3);
   const s = viewScale;
 
@@ -718,21 +715,6 @@ function drawRouteBox(dt) {
     rctx.beginPath();
     rctx.arc(x, y, dotR, 0, Math.PI * 2);
     rctx.fillStyle = `rgba(140, 170, 238, ${0.3 + age * 0.7})`;
-    rctx.fill();
-  }
-
-  // waypoints: peach diamonds
-  for (let i = 0; i < waypoints.length; i++) {
-    const x = cx + east(waypoints[i]) * s;
-    const y = cy - north(waypoints[i]) * s;
-    const wr = Math.max(3, size * 0.014);
-    rctx.beginPath();
-    rctx.moveTo(x, y - wr);
-    rctx.lineTo(x + wr, y);
-    rctx.lineTo(x, y + wr);
-    rctx.lineTo(x - wr, y);
-    rctx.closePath();
-    rctx.fillStyle = "#ef9f76";
     rctx.fill();
   }
 
@@ -772,25 +754,6 @@ function drawRouteBox(dt) {
     rctx.fillStyle = col;
     rctx.fillText(t, cx + Math.cos(a) * r, cy + Math.sin(a) * r);
   }
-
-  // heading arrow at the center dot
-  const a = (headingSm * Math.PI) / 180;
-  const L = size * 0.15;
-  const W2 = size * 0.045;
-  rctx.save();
-  rctx.translate(cx, cy);
-  rctx.rotate(a);
-  rctx.beginPath();
-  rctx.moveTo(0, -L);
-  rctx.lineTo(W2, L * 0.35);
-  rctx.lineTo(0, L * 0.08);
-  rctx.lineTo(-W2, L * 0.35);
-  rctx.closePath();
-  rctx.fillStyle = "#f2d5cf";
-  rctx.shadowColor = "#f2d5cf";
-  rctx.shadowBlur = 8 + level * 10; // the music glows through, why not
-  rctx.fill();
-  rctx.restore();
 }
 
 /* ---------- allow buttons ---------- */
