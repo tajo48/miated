@@ -232,8 +232,8 @@
   </div>
 
   <div class="btnRow">
-    <button id="allowMicBtn" class="allow">Allow mic</button>
-    <button id="allowGpsBtn" class="allow">Allow location</button>
+    <button id="allowMicBtn" class="allow" hidden>Allow mic</button>
+    <button id="allowGpsBtn" class="allow" hidden>Allow location</button>
   </div>
 
   <div class="stats">
@@ -244,6 +244,14 @@
   <div class="card" id="routeCard" hidden>
     <canvas id="route"></canvas>
   </div>
+</div>
+
+<div id="cpBackdrop" hidden></div>
+<div id="cpMenu" hidden>
+  <div class="cpTitle">CHECKPOINT</div>
+  <button id="cpAddBtn">+ Drop checkpoint here</button>
+  <button id="cpRemoveBtn">− Remove last checkpoint</button>
+  <button id="cpCancelBtn">Cancel</button>
 </div>
 
 <script>
@@ -334,7 +342,10 @@ function startMic() {
     media.getAudioTracks()[0].addEventListener("ended", () => {
       listening = false;
     });
-  }).catch(() => {}); // denied or unavailable: the field simply stays idle
+  }).catch(() => {
+    micFailed = true; // denied or unavailable — show the allow button
+    updateAllowButton();
+  }); // the field simply stays idle
 }
 
 /* ---------- analysis: level, beats, tempo ---------- */
@@ -601,7 +612,13 @@ function startGps() {
     return; // no GPS path — readouts just stay at –
   }
   if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-  watchId = navigator.geolocation.watchPosition(onFix, () => {}, {
+  watchId = navigator.geolocation.watchPosition(onFix, (err) => {
+    // only a real refusal/absence counts as failure — timeouts keep trying
+    if (err && (err.code === 1 || err.code === 2)) {
+      gpsFailed = true; // denied or unavailable — show the allow button
+      updateAllowButton();
+    }
+  }, {
     enableHighAccuracy: true,
     maximumAge: 0,
     timeout: 20000,
@@ -1435,14 +1452,16 @@ function drawRouteBox(dt) {
 /* ---------- allow buttons ---------- */
 
 /* One button per permission: taps are the reliable way to make Chrome show
-   the dialog, and each button stays visible until ITS permission is actually
-   granted — a request alone doesn't count as allowed. */
+   the dialog, and each button stays hidden until its permission attempt has
+   actually failed — nothing is requested or probed on boot. */
 let micAllowed = false;
 let gpsAllowed = false;
+let micFailed = false;  // a mic request was made and did not succeed
+let gpsFailed = false;  // a GPS request was made and did not succeed
 
 function updateAllowButton() {
-  allowMicBtn.hidden = micAllowed;
-  allowGpsBtn.hidden = gpsAllowed;
+  allowMicBtn.hidden = micAllowed || !micFailed;
+  allowGpsBtn.hidden = gpsAllowed || !gpsFailed;
 }
 
 allowMicBtn.addEventListener("click", () => {
@@ -1472,11 +1491,7 @@ function requestWakeLock() {
 /* ---------- auto-start everything ---------- */
 
 window.addEventListener("load", () => {
-  queryPerms();
-  startMic();
-  startGps();
   requestWakeLock();
-  updateAllowButton();
 });
 
 document.addEventListener("visibilitychange", () => {
@@ -1514,14 +1529,5 @@ if ("serviceWorker" in navigator) {
   });
 }
 </script>
-
-<div id="cpBackdrop" hidden></div>
-<div id="cpMenu" hidden>
-  <div class="cpTitle">CHECKPOINT</div>
-  <button id="cpAddBtn">+ Drop checkpoint here</button>
-  <button id="cpRemoveBtn">− Remove last checkpoint</button>
-  <button id="cpCancelBtn">Cancel</button>
-</div>
-
 </body>
 </html>
