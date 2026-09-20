@@ -39,7 +39,7 @@
     align-items: center;
     gap: 14px;
     padding:
-      calc(24px + env(safe-area-inset-top, 0px))
+      calc(12px + env(safe-area-inset-top, 0px))
       calc(14px + env(safe-area-inset-right, 0px))
       calc(24px + env(safe-area-inset-bottom, 0px))
       calc(14px + env(safe-area-inset-left, 0px));
@@ -660,19 +660,23 @@ window.visualViewport?.addEventListener("resize", syncViewport);
 for (const delay of [100, 300, 800, 1500, 3000]) setTimeout(syncViewport, delay);
 
 /* Deeper workaround for the same cold-start bug: minimize/reopen or rotation
-   makes Chrome recompute the immersive window state, so a fullscreen
-   enter/exit toggle is used as the programmatic equivalent. Tried once
-   shortly after load (usually rejected without a gesture) and again on the
-   first tap, which the browser accepts. */
+   makes Chrome recompute the immersive window state. The programmatic
+   equivalent is entering element fullscreen, locking orientation to its
+   current value (mimics a rotation), then exiting. No gesture → most attempts
+   reject, so it retries automatically AND on every tap until one succeeds. */
+let immersiveFixed = false;
 async function nudgeImmersive() {
+  if (immersiveFixed) return;
   try {
     await document.documentElement.requestFullscreen();
+    try { await screen.orientation.lock(screen.orientation.type); } catch {}
     await document.exitFullscreen();
+    immersiveFixed = true;
   } catch {}
 }
 if (matchMedia("(display-mode: fullscreen)").matches) {
-  setTimeout(nudgeImmersive, 500);
-  addEventListener("pointerdown", nudgeImmersive, { once: true, capture: true });
+  for (const delay of [300, 800, 1500, 3000]) setTimeout(nudgeImmersive, delay);
+  addEventListener("pointerdown", nudgeImmersive, { capture: true });
 }
 
 /* ---------- gps speed & acceleration (auto-start) ---------- */
