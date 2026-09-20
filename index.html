@@ -805,22 +805,9 @@ function drawRouteBox(dt) {
     return [x, y, nx, ny];
   }
 
-  // cardinal letters: drawn independently of the ticks. Each letter's screen
-  // bearing passes through a corner-dwell warp: within DWELL degrees of a
-  // corner the letter parks ON the corner arc and holds still while the rose
-  // keeps turning underneath. The warp is a pure function of the current
-  // heading — continuous, so no jumps, and exact again at the edge centers.
-  // Away from corners letters travel at 45/(45-DWELL) to catch up; with
-  // DWELL=15 that's 1.5x, spread along the straight sides.
-  const DWELL = 15; // deg of rose turn each letter ignores around a corner
-
-  function letterBearing(b) {
-    const l = (((b - 45) % 90) + 135) % 90 - 45; // offset from nearest corner
-    const a = Math.abs(l);
-    const f = a <= DWELL ? 0 : (a - DWELL) * (45 / (45 - DWELL));
-    return b - l + Math.sign(l) * f; // b - l = nearest corner diagonal
-  }
-
+  // cardinal letters: drawn independently of the ticks but at their exact
+  // bearings, so each letter stays locked to its 90° major tick at every
+  // rotation angle — the whole rose (ticks + letters) is one pure rotation.
   function drawCardinals(h) {
     rctx.textAlign = "center";
     rctx.textBaseline = "middle";
@@ -828,7 +815,7 @@ function drawRouteBox(dt) {
     const inset = size * 0.12; // clear of the ticks: letters live inside them
     const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
     for (const [t, deg, col] of cardinals) {
-      const [x, y, nx, ny] = rosePoint(letterBearing(deg - h));
+      const [x, y, nx, ny] = rosePoint(deg - h);
       rctx.fillStyle = col;
       rctx.fillText(t, cx + x - nx * inset, cy + y - ny * inset);
     }
