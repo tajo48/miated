@@ -823,10 +823,22 @@ function drawRouteBox(dt) {
     rctx.textAlign = "center";
     rctx.textBaseline = "middle";
     const minGap = ringR + majorTick; // resting circle-centre depth
-    const need = ringR + clearTick;   // parked circle-centre depth at a corner
+    const need = ringR + clearTick;   // parked circle-centre depth: one big
+    // tick of clear space from the WHOLE border — arc and both flanking edges
     // angular half-width of the corner zone: bearings whose border point
     // lies on the corner arc (45° minus the core square's half-angle)
     const zone = 45 - Math.atan(side / half) * 180 / Math.PI;
+    // true distance from a point to the rounded border (square ⊕ corner
+    // circle): the corner zone is rad minus the distance to the corner
+    // centre, everywhere else the depth below the nearest offset edge
+    function borderDist(px, py) {
+      const u = Math.abs(px - cx), v = Math.abs(py - cy);
+      if (u > side || v > side) {
+        const du = u - side, dv = v - side;
+        return u > side && v > side ? rad - Math.hypot(du, dv) : rad - Math.max(du, dv);
+      }
+      return Math.min(side + rad - u, side + rad - v);
+    }
     const cardinals = [["N", 0, "#e78284"], ["E", 90, "#a5adce"], ["S", 180, "#a5adce"], ["W", 270, "#a5adce"]];
     for (const [t, deg, col] of cardinals) {
       const [x, y, nx, ny] = rosePoint(deg - h);
@@ -834,12 +846,21 @@ function drawRouteBox(dt) {
       // 45° at an edge middle
       const b = ((deg - h) % 90 + 90) % 90;
       const w = Math.abs(b - 45);
-      // depth along the bearing line: normal while approaching, easing to
-      // the parked depth only across the corner zone itself
+      // depth along the bearing line: normal while approaching; across the
+      // corner zone it eases to the parked depth, found by sliding back
+      // until the circle's edge keeps one full big tick from the whole
+      // border — clearance grows monotonically with depth, so bisection
+      // nails the parking spot
       let c = minGap;
       if (w < zone) {
+        let lo = minGap, hi = half;
+        for (let i = 0; i < 24; i++) {
+          const m = (lo + hi) / 2;
+          if (borderDist(cx + x - nx * m, cy + y - ny * m) < need) lo = m;
+          else hi = m;
+        }
         const s = 1 - w / zone; // 1 at the diagonal, 0 at the zone edge
-        c = minGap + (need - minGap) * s * s * (3 - 2 * s);
+        c = minGap + (hi - minGap) * s * s * (3 - 2 * s);
       }
       const px = cx + x - nx * c;
       const py = cy + y - ny * c;
