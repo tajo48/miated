@@ -713,7 +713,7 @@ function drawRouteBox(dt) {
   let maxD = 25;
   for (const p of route) maxD = Math.max(maxD, Math.hypot(east(p), north(p)));
   zoomFactor += ((performance.now() - lastManualZoom < 5000 ? userZoom : 1) - zoomFactor) * Math.min(1, dt * 3);
-  const target = ((dialR * 0.72) / maxD) * zoomFactor;
+  const target = ((dialHalf * 0.72) / maxD) * zoomFactor;
   viewScale = viewScale === null ? target : viewScale + (target - viewScale) * Math.min(1, dt * 3);
   const s = viewScale;
 
