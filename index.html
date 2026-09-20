@@ -185,11 +185,6 @@
   <div class="card" id="routeCard" hidden>
     <canvas id="route"></canvas>
   </div>
-
-  <div class="btnRow" id="gpsTools" hidden>
-    <button id="holdGpsBtn" class="allow">Hold GPS</button>
-    <button id="clearDotsBtn" class="allow">Clear dots</button>
-  </div>
 </div>
 
 <script>
@@ -204,9 +199,6 @@ const accelEl = document.getElementById("accel");
 const allowMicBtn = document.getElementById("allowMicBtn");
 const allowGpsBtn = document.getElementById("allowGpsBtn");
 const routeCard = document.getElementById("routeCard");
-const gpsTools = document.getElementById("gpsTools");
-const holdGpsBtn = document.getElementById("holdGpsBtn");
-const clearDotsBtn = document.getElementById("clearDotsBtn");
 const routeCanvas = document.getElementById("route");
 const rctx = routeCanvas.getContext("2d");
 
@@ -596,11 +588,7 @@ function onFix(p) {
   if (!routeShown) {
     routeShown = true;
     routeCard.hidden = false;
-    gpsTools.hidden = false;
   }
-
-  // GPS hold: freeze on the current fix — ignore every new one until resumed
-  if (gpsHeld) return;
 
   // record the traveled route (decimate if it grows huge)
   const last = route[route.length - 1];
@@ -738,7 +726,7 @@ function drawRouteLayer(g, cx, cy, s, hdgDeg, curPos, dots, dotR, markerR) {
   const pts = dots
     .map((p) => {
       const [x, y] = proj(p);
-      return [cx + x * s, cy - y * s, p.t];
+      return [cx + x * s, cy - y * s, p.t, !!p.cp];
     })
     .sort((a, b) => a[2] - b[2]); // chronological by creation time, not index
   const n = pts.length;
@@ -757,13 +745,21 @@ function drawRouteLayer(g, cx, cy, s, hdgDeg, curPos, dots, dotR, markerR) {
     g.stroke();
   }
 
-  // dots, older ones fading toward the start
+  // dots, older ones fading toward the start; checkpoints get a ring so
+  // manually dropped points stand out from GPS-recorded ones
   for (let i = 0; i < n; i++) {
+    const [x, y, , cp] = pts[i];
     const age = n > 1 ? i / (n - 1) : 1;
     g.beginPath();
-    g.arc(pts[i][0], pts[i][1], dotR, 0, Math.PI * 2);
-    g.fillStyle = `rgba(140, 170, 238, ${0.3 + age * 0.7})`;
+    g.arc(x, y, cp ? dotR * 1.6 : dotR, 0, Math.PI * 2);
+    g.fillStyle = cp ? "rgba(234, 154, 151, 0.95)" : `rgba(140, 170, 238, ${0.3 + age * 0.7})`;
     g.fill();
+    if (cp) {
+      g.beginPath();
+      g.arc(x, y, dotR * 0.6, 0, Math.PI * 2);
+      g.fillStyle = "rgba(46, 52, 64, 0.9)";
+      g.fill();
+    }
   }
 
   // current position: green dot with a soft glow
@@ -876,11 +872,14 @@ function releasePinch(e) {
 routeCanvas.addEventListener("pointerup", releasePinch);
 routeCanvas.addEventListener("pointercancel", releasePinch);
 
-/* ---------- share the route view (double-tap the GPS card) ---------- */
+/* ---------- card gestures: checkpoints, share, delete ---------- */
 
-/* Two quick taps (< 350 ms apart) on the route canvas render the dial as a
-   PNG and open the system share sheet — or copy/download where sharing
-   files isn't available. Taps that are part of a pinch never trigger it. */
+/* One click drops a checkpoint at the current position, two quick clicks
+   share the route view as a PNG, three clicks remove the newest checkpoint,
+   and holding a finger down for ~600 ms asks to delete every checkpoint and
+   dot. Because 1/2/3 clicks are all valid, the action fires ~350 ms after
+   the last click of a burst. Taps that are part of a pinch never trigger
+   anything. */
 const canShareFiles = (() => {
   if (typeof navigator.share !== "function" || typeof navigator.canShare !== "function" || typeof File === "undefined") return false;
   try {
@@ -890,37 +889,104 @@ const canShareFiles = (() => {
   }
 })();
 
-let shareFlash = -1e9; // timestamp: drawRouteBox flashes the border on share
-let lastTapT = 0;      // end of the previous tap, for double-tap detection
+let shareFlash = -1e9; // timestamp: drawRouteBox flashes the border on actions
+let tapTimes = [];     // recent tap timestamps, for multi-tap detection
 let tapStart = null;   // { id, t, x, y } of the finger that could be a tap
+let holdTimer = null;  // pending long-press → delete everything
+let tapTimer = null;   // pending action after a burst of 1/2/3 clicks
+
+function clearHoldTimer() {
+  if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+}
+function clearTapTimer() {
+  if (tapTimer) { clearTimeout(tapTimer); tapTimer = null; }
+}
+
+/* ---------- checkpoints ---------- */
+
+let checkpoints = []; // manually dropped dots, newest last
+
+function addCheckpoint() {
+  if (!cur) return;
+  const cp = { lat: cur.lat, lon: cur.lon, t: Date.now(), cp: true };
+  checkpoints.push(cp);
+  route.push(cp);
+  saveRouteSoon();
+  shareFlash = performance.now();
+}
+
+function removeCheckpoint() {
+  const cp = checkpoints.pop();
+  if (!cp) return;
+  route = route.filter((p) => p !== cp);
+  saveRoute();
+  shareFlash = performance.now();
+}
+
+function clearAllDots() {
+  checkpoints = [];
+  route = [];
+  try { localStorage.removeItem(ROUTE_KEY); } catch {}
+  saveRouteSoon();
+  shareFlash = performance.now();
+}
 
 routeCanvas.addEventListener("pointerdown", (e) => {
-  // a second finger joining means a pinch — not a tap
-  tapStart = pinchPointers.size >= 2 ? null : { id: e.pointerId, t: performance.now(), x: e.clientX, y: e.clientY };
+  // a second finger joining means a pinch — nothing else counts
+  if (pinchPointers.size >= 2) { tapStart = null; clearHoldTimer(); clearTapTimer(); return; }
+  tapStart = { id: e.pointerId, t: performance.now(), x: e.clientX, y: e.clientY };
+  clearHoldTimer();
+  clearTapTimer();
+  holdTimer = setTimeout(() => {
+    holdTimer = null;
+    if (!tapStart || tapStart.id !== e.pointerId) return;
+    tapStart = null;
+    tapTimes = [];
+    if (confirm("Delete all checkpoints and dots? This cannot be undone.")) clearAllDots();
+  }, 600);
 });
 
 routeCanvas.addEventListener("pointermove", (e) => {
   if (!tapStart) return;
   if (pinchPointers.size >= 2 || e.pointerId !== tapStart.id) {
     tapStart = null;
+    clearHoldTimer();
     return;
   }
-  // dragging disqualifies the gesture from being a tap
-  if (Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 12) tapStart = null;
+  // dragging disqualifies the gesture from being a tap or a hold
+  if (Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 12) {
+    tapStart = null;
+    clearHoldTimer();
+  }
 });
 
 routeCanvas.addEventListener("pointerup", (e) => {
+  clearHoldTimer();
   const t = tapStart;
   tapStart = null;
   if (!t || e.pointerId !== t.id || pinchPointers.size > 0) return;
   const now = performance.now();
-  if (now - t.t > 400 || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 12) return;
-  if (now - lastTapT < 350) {
-    lastTapT = 0;
-    shareRoute();
-  } else {
-    lastTapT = now;
+  if (now - t.t > 400 || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 12) {
+    tapTimes = [];
+    return;
   }
+  tapTimes = tapTimes.filter((tt) => now - tt < 350);
+  tapTimes.push(now);
+  clearTapTimer();
+  const n = tapTimes.length;
+  tapTimer = setTimeout(() => {
+    tapTimer = null;
+    tapTimes = [];
+    if (n === 1) addCheckpoint();
+    else if (n === 2) shareRoute();
+    else if (n >= 3) removeCheckpoint();
+  }, 350);
+});
+routeCanvas.addEventListener("pointercancel", () => {
+  clearHoldTimer();
+  clearTapTimer();
+  tapStart = null;
+  tapTimes = [];
 });
 
 function downloadBlob(blob, name) {
@@ -1280,20 +1346,6 @@ allowMicBtn.addEventListener("click", () => {
 allowGpsBtn.addEventListener("click", () => {
   startGps();
   updateAllowButton();
-});
-
-/* ---------- GPS hold + route history ---------- */
-
-let gpsHeld = false;
-holdGpsBtn.addEventListener("click", () => {
-  gpsHeld = !gpsHeld;
-  holdGpsBtn.textContent = gpsHeld ? "Resume GPS" : "Hold GPS";
-});
-
-clearDotsBtn.addEventListener("click", () => {
-  if (!confirm("Delete all route dots? This cannot be undone.")) return;
-  route = [];
-  try { localStorage.removeItem(ROUTE_KEY); } catch {}
 });
 
 /* ---------- keep the screen on ---------- */
