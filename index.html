@@ -726,6 +726,49 @@ function drawRouteLayer(g, cx, cy, s, hdgDeg, curPos, dots, dotR, markerR) {
   g.fill();
   g.shadowBlur = 0;
 }
+/* ---------- range rings ---------- */
+
+/* Apple-Watch-compass-style range rings: concentric circles at REAL meter
+   distances around the position. Spacing snaps to a 1-2-5 ladder so the
+   labels stay round, rings are labelled at 12 o'clock with their distance,
+   and a legend in the dial's corner always names the current ring spacing —
+   so zooming in or out re-scales both the rings and the legend. */
+function ringStep(s) {
+  for (const step of [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
+    if (step * s >= 42) return step; // rings never closer than ~42 px
+  }
+  return 20000;
+}
+
+function fmtDist(m) {
+  if (m < 1000) return m + " m";
+  const km = m / 1000;
+  return (km % 1 === 0 ? km.toFixed(0) : km.toFixed(1)) + " km";
+}
+
+function drawRangeRings(g, cx, cy, s, avail, labelPx, legendPx, half) {
+  const step = ringStep(s);
+  g.textAlign = "left";
+  g.textBaseline = "middle";
+  g.font = Math.round(labelPx) + "px " + BEBAS;
+  for (let i = 1; i * step * s <= avail; i++) {
+    const r = i * step * s;
+    g.beginPath();
+    g.arc(cx, cy, r, 0, Math.PI * 2);
+    g.strokeStyle = "rgba(165, 173, 206, 0.18)";
+    g.lineWidth = 1;
+    g.stroke();
+    // distance label sitting on the ring at 12 o'clock
+    g.fillStyle = "rgba(165, 173, 206, 0.55)";
+    g.fillText(fmtDist(i * step), cx + 4, cy - r);
+  }
+  // legend: what one ring spacing means at the current scale
+  g.textBaseline = "alphabetic";
+  g.font = Math.round(legendPx) + "px " + BEBAS;
+  g.fillStyle = "#626880";
+  g.fillText(fmtDist(step) + " · RING", cx - half + 12, cy + half - 12);
+}
+
 let heading = null;       // fused heading, degrees clockwise from TRUE north
 let magHeading = null;    // raw compass heading (magnetic-north referenced)
 let compassOffset = null; // learned magnetic→true offset (declination + mount)
@@ -906,6 +949,8 @@ function renderRouteShare() {
   g.beginPath();
   roundedRectPath(g, cx, cy, dialHalf - 3, 8);
   g.clip();
+  // range rings under the route — same rule as the live dial
+  drawRangeRings(g, cx, cy, s, (dialHalf - 14) * 0.86, 13, 15, dialHalf - 14);
   drawRouteLayer(g, cx, cy, s, hdg, cur, route, 4, 8);
   g.restore();
 
@@ -1170,6 +1215,8 @@ function drawRouteBox(dt) {
   rctx.beginPath();
   roundedRectPath(rctx, cx, cy, dialHalf - 3, Math.max(4, dialRad - 2));
   rctx.clip();
+  // range rings under the route, sharing the same px-per-meter scale
+  drawRangeRings(rctx, cx, cy, s, dialHalf * 0.86, size * 0.032, size * 0.036, dialHalf);
   drawRouteLayer(rctx, cx, cy, s, hdg, cur, route, Math.max(1.4, size * 0.009), Math.max(3, size * 0.016));
   rctx.restore();
 
