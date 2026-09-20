@@ -302,11 +302,15 @@ async function startListen() {
         noiseSuppression: false,
         autoGainControl: false,
       },
+      systemAudio: "include", // offer system-audio sharing where supported
+      surfaceSwitching: "include", // hot-swap the shared tab without re-picking
+      selfBrowserSurface: "exclude", // don't offer to capture miated itself
     });
     listenBtn.disabled = false;
 
-    // We only need sound; dropping the video track keeps the picker simple.
-    media.getVideoTracks().forEach((t) => t.stop());
+    /* Keep the video track ALIVE. Stopping it ends the whole capture session
+       on several Chromium versions — audio included — which made listening
+       look broken. We simply never draw it. */
 
     if (!media.getAudioTracks().length) {
       media.getTracks().forEach((t) => t.stop());
@@ -509,6 +513,8 @@ function draw(ts, dt) {
 }
 
 let lastTs = 0;
+let silentFor = 0;
+let lastStatusTs = 0;
 
 function frame(ts) {
   requestAnimationFrame(frame);
@@ -519,6 +525,17 @@ function frame(ts) {
   // fast attack, slow release
   level += (target - level) * Math.min(1, dt * (target > level ? 16 : 5));
   beatPulse = Math.max(0, beatPulse - dt * 3);
+
+  // live level readout — makes a silent capture immediately diagnosable
+  if (listening) {
+    silentFor = level < 0.005 ? silentFor + dt : 0;
+    if (ts - lastStatusTs > 500) {
+      lastStatusTs = ts;
+      listenStatus.textContent = silentFor > 3
+        ? "Listening, but it's silent — tick “share tab audio” in the picker, or press play"
+        : "Listening · level " + Math.round(level * 100) + "%";
+    }
+  }
 
   draw(ts, dt);
 }
